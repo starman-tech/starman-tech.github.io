@@ -1,0 +1,25 @@
+[
+    {
+        "title": "Starship IFT-5 : la première capture du booster par la tour",
+        "date": "13.10.2024",
+        "tag": "SPACE",
+        "desc": "Le 13 octobre 2024, SpaceX a réussi quelque chose de spectaculaire : lors du vol d’essai IFT-5 de Starship, le booster Super Heavy a été **capturé directement par la tour de lancement Mechazilla**, grâce à ses bras mécaniques « chopsticks ». C’est une étape énorme vers une réutilisation encore plus rapide des lanceurs lourds, et voir ces géants se déplacer avec autant de précision m’a vraiment impressionné. :contentReference[oaicite:0]{index=0}",
+        "link": "#"
+    },
+    {
+        "title": "New Glenn décolle pour la première fois",
+        "date": "16.01.2025",
+        "tag": "SPACE",
+        "desc": "Le 16 janvier 2025, j’ai suivi avec fascination le **premier vol du lanceur New Glenn de Blue Origin**. Après des années de développement et de reports, la fusée a finalement atteint l’orbite depuis Cape Canaveral, injectant son second étage et le prototype Blue Ring Pathfinder en vol. Même si le booster n’a pas pu être récupéré cette fois-ci, l’atteinte de l’orbite reste un cap majeur pour Blue Origin dans la course spatiale commerciale. :contentReference[oaicite:1]{index=1}",
+        "link": "#"
+    },
+    {
+        "title": "Zephyr bat le record de vol continu",
+        "date": "28.04.2025",
+        "tag": "TECH",
+        "desc": "Un appareil qui plane au-dessus de nous pendant **67 jours, 6 heures et 52 minutes dans la stratosphère**… Je trouve ça complètement fou. Le drone solaire Zephyr, conçu par AALTO (filiale d’Airbus), a établi un nouveau record mondial en restant en vol continu sans interruption, démontrant à quel point l’énergie solaire et les batteries peuvent repousser les limites de l’aéronautique. :contentReference[oaicite:2]{index=2}",
+        "link": "#"
+    }
+]
+
+
