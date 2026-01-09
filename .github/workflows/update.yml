@@ -36,7 +36,7 @@ jobs:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           BLOG_ID: ${{ secrets.BLOG_ID }}
           PROJECTS_ID: ${{ secrets.PROJECTS_ID }}
-        run: node scripts/bot.js
+        run: node scripts/generate-site.js
 
       - name: Sauvegarde et Mise en ligne
         run: |
