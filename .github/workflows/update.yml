@@ -1,0 +1,47 @@
+name: Mise à jour Site via Discord
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # Tous les jours à 4h00 du matin
+  workflow_dispatch: # Permet de lancer manuellement le bot via un bouton sur GitHub
+
+jobs:
+  build-and-scrape:
+    runs-on: ubuntu-latest
+    
+    # Permission indispensable pour que le bot puisse modifier ton code
+    permissions:
+      contents: write
+
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v3
+
+      - name: Installation de Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Installation des librairies
+        run: npm install discord.js axios
+
+      - name: Création des dossiers si absents
+        run: |
+          mkdir -p data/img
+          mkdir -p data/details
+
+      - name: Lancement du Bot
+        env:
+          # Ces secrets sont à configurer dans les paramètres du Repo GitHub
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          BLOG_ID: ${{ secrets.BLOG_ID }}
+          PROJECTS_ID: ${{ secrets.PROJECTS_ID }}
+        run: node scripts/bot.js
+
+      - name: Sauvegarde et Mise en ligne
+        run: |
+          git config --global user.name 'Bot Discord'
+          git config --global user.email 'bot@noreply.github.com'
+          git add data/
+          # On vérifie s'il y a des changements avant de commit pour éviter les erreurs
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Mise à jour contenu [skip ci]" && git push)
