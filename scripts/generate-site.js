@@ -87,9 +87,22 @@ client.once('ready', async () => {
         };
         blogJson.push(entry);
     }
-    // On inverse pour avoir du plus récent au plus vieux, ou l'inverse selon ton besoin
-    fs.writeFileSync(path.join(__dirname, '../blog.json'), JSON.stringify(blogJson, null, 4));
-    console.log(`Blog généré : ${blogJson.length} articles.`);
+    
+    // LOGIQUE DE FUSION (BLOG)
+    const blogPath = path.join(__dirname, '../blog.json');
+    let finalBlog = blogJson;
+    if (fs.existsSync(blogPath)) {
+        try {
+            const oldBlog = JSON.parse(fs.readFileSync(blogPath, 'utf8'));
+            // On garde les anciens articles qui ne sont PAS dans la nouvelle liste (basé sur le titre)
+            const newTitles = new Set(blogJson.map(b => b.title));
+            const oldKept = oldBlog.filter(b => !newTitles.has(b.title));
+            finalBlog = [...blogJson, ...oldKept];
+        } catch (e) { console.error("Erreur lecture ancien blog:", e); }
+    }
+    fs.writeFileSync(blogPath, JSON.stringify(finalBlog, null, 4));
+    
+    console.log(`Blog généré : ${finalBlog.length} articles.`);
 
 
     // 2. TRAITEMENT DES PROJETS
@@ -172,12 +185,36 @@ client.once('ready', async () => {
             });
         }
 
-        // Sauvegarde du fichier détail spécifique
-        fs.writeFileSync(path.join(__dirname, `../${detailFileName}`), JSON.stringify(detailJson, null, 4));
+        // LOGIQUE DE FUSION (DETAIL PROJET)
+        const detailPath = path.join(__dirname, `../${detailFileName}`);
+        let finalDetail = detailJson;
+        if (fs.existsSync(detailPath)) {
+            try {
+                const oldDetails = JSON.parse(fs.readFileSync(detailPath, 'utf8'));
+                // On garde les anciennes mises à jour non présentes dans le nouveau fetch (basé sur la version)
+                const newVersions = new Set(detailJson.map(d => d.version));
+                const oldKeptDetails = oldDetails.filter(d => !newVersions.has(d.version));
+                finalDetail = [...detailJson, ...oldKeptDetails];
+            } catch (e) { console.error(`Erreur lecture detail ${detailFileName}:`, e); }
+        }
+        fs.writeFileSync(detailPath, JSON.stringify(finalDetail, null, 4));
     }
 
-    fs.writeFileSync(path.join(__dirname, '../projects.json'), JSON.stringify(projectsJson, null, 4));
-    console.log(`Projets générés : ${projectsJson.length} projets.`);
+    // LOGIQUE DE FUSION (LISTE PROJETS)
+    const projectsPath = path.join(__dirname, '../projects.json');
+    let finalProjects = projectsJson;
+    if (fs.existsSync(projectsPath)) {
+        try {
+            const oldProjects = JSON.parse(fs.readFileSync(projectsPath, 'utf8'));
+            // On garde les anciens projets qui ne sont pas dans la nouvelle liste (basé sur le titre/nom du thread)
+            const newProjectTitles = new Set(projectsJson.map(p => p.title));
+            const oldKeptProjects = oldProjects.filter(p => !newProjectTitles.has(p.title));
+            finalProjects = [...projectsJson, ...oldKeptProjects];
+        } catch (e) { console.error("Erreur lecture anciens projets:", e); }
+    }
+    fs.writeFileSync(projectsPath, JSON.stringify(finalProjects, null, 4));
+    
+    console.log(`Projets générés : ${finalProjects.length} projets.`);
 
     client.destroy();
     process.exit(0);
