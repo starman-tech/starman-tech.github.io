@@ -27,8 +27,8 @@ const client = new Client({
 async function saveImage(url, messageId, filenamePrefix = '') {
     const ext = path.extname(url.split('?')[0]) || '.jpg';
     const filename = `${filenamePrefix}${messageId}${ext}`;
-    const localPath = path.join(__dirname, '../data/img', filename);
-    const publicPath = `data/img/${filename}`; // Chemin pour le site web
+    const localPath = path.join(__dirname, '../img', filename);
+    const publicPath = `img/${filename}`; // Chemin pour le site web
 
     if (fs.existsSync(localPath)) return publicPath; // Déjà téléchargée
 
@@ -88,7 +88,7 @@ client.once('ready', async () => {
         blogJson.push(entry);
     }
     // On inverse pour avoir du plus récent au plus vieux, ou l'inverse selon ton besoin
-    fs.writeFileSync(path.join(__dirname, '../data/blog.json'), JSON.stringify(blogJson, null, 4));
+    fs.writeFileSync(path.join(__dirname, '../blog.json'), JSON.stringify(blogJson, null, 4));
     console.log(`Blog généré : ${blogJson.length} articles.`);
 
 
@@ -173,10 +173,10 @@ client.once('ready', async () => {
         }
 
         // Sauvegarde du fichier détail spécifique
-        fs.writeFileSync(path.join(__dirname, `../data/details/${detailFileName}`), JSON.stringify(detailJson, null, 4));
+        fs.writeFileSync(path.join(__dirname, `../details/${detailFileName}`), JSON.stringify(detailJson, null, 4));
     }
 
-    fs.writeFileSync(path.join(__dirname, '../data/projects.json'), JSON.stringify(projectsJson, null, 4));
+    fs.writeFileSync(path.join(__dirname, '../projects.json'), JSON.stringify(projectsJson, null, 4));
     console.log(`Projets générés : ${projectsJson.length} projets.`);
 
     client.destroy();
