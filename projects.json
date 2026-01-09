@@ -1,13 +1,35 @@
 [
     {
-        "title": "FOCUSPCSI",
+        "title": "Focus PCSI",
         "version": "V4.2",
-        "date": "2026-01-09",
-        "desc": "IA de surveillance de concentration.",
+        "date": "2025-01-15",
+        "desc": "IA de surveillance de concentration. Analyse en temps réel via webcam. Mode Pomodoro inclus.",
         "link": "https://focuspcsi.netlify.app/",
-        "icon": "fas fa-code",
-        "style": "p-default",
-        "btnText": "VOIR",
+        "icon": "fas fa-eye",
+        "style": "p-focus",
+        "btnText": "LANCER",
         "detailFile": "focuspcsi_detail.json"
+    },
+    {
+        "title": "MOL.OS",
+        "version": "V1.0",
+        "date": "2024-11-20",
+        "desc": "Visualiseur moléculaire universel 3D/2D connecté à PubChem.",
+        "link": "https://molos.netlify.app/",
+        "icon": "fas fa-atom",
+        "style": "p-mol",
+        "btnText": "OUVRIR LABO",
+        "detailFile": null
+    },
+    {
+        "title": "SPOTIFY 3D",
+        "version": "NEW",
+        "date": "2025-02-01",
+        "desc": "Convertisseur instantané de musique en objet 3D (STL).",
+        "link": "https://spotifystl.netlify.app/",
+        "icon": "fa-brands fa-spotify",
+        "style": "p-spot",
+        "btnText": "GÉNÉRER",
+        "detailFile": null
     }
 ]
