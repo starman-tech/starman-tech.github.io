@@ -173,7 +173,7 @@ client.once('ready', async () => {
         }
 
         // Sauvegarde du fichier détail spécifique
-        fs.writeFileSync(path.join(__dirname, `../details/${detailFileName}`), JSON.stringify(detailJson, null, 4));
+        fs.writeFileSync(path.join(__dirname, `../${detailFileName}`), JSON.stringify(detailJson, null, 4));
     }
 
     fs.writeFileSync(path.join(__dirname, '../projects.json'), JSON.stringify(projectsJson, null, 4));
