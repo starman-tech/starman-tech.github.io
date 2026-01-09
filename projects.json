@@ -1,5 +1,16 @@
 [
     {
+        "title": "FOCUSPCSI",
+        "version": "V4.2",
+        "date": "2026-01-09",
+        "desc": "IA de surveillance de concentration.",
+        "link": "https://focuspcsi.netlify.app/",
+        "icon": "fas fa-code",
+        "style": "p-default",
+        "btnText": "VOIR",
+        "detailFile": "focuspcsi_detail.json"
+    },
+    {
         "title": "Focus PCSI",
         "version": "V4.2",
         "date": "2025-01-15",
