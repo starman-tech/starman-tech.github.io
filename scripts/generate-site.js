@@ -5,8 +5,8 @@ const axios = require('axios');
 
 // CONFIGURATION
 const CONFIG = {
-    blogChannelId: process.env.BLOG_CHANNEL_ID,
-    projectsForumId: process.env.PROJECTS_FORUM_ID,
+    blogChannelId: process.env.BLOG_ID,
+    projectsForumId: process.env.PROJECTS_ID,
     // Mapping des Tags Discord vers tes classes CSS/Icons
     tagMapping: {
         'Web': { icon: 'fas fa-globe', style: 'p-web' },
