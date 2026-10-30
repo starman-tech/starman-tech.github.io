@@ -319,7 +319,11 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
 .d-img{border:var(--line);margin-bottom:18px;background:#111}
 .d-img img,.d-img video{display:block;width:100%}
 .d-fig{margin:18px 0;border:var(--line);background:#fff}
-.d-fig img{display:block;width:100%}
+.d-fig img,.d-fig video{display:block;width:100%}
+.d-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}
+.d-pair .d-fig{margin:0;display:flex;flex-direction:column}
+.d-pair figcaption{flex:1}
+.d-cap{margin:-8px 0 16px;color:var(--muted);text-transform:none;letter-spacing:.04em;line-height:1.5}
 .d-fig figcaption{padding:8px 10px;border-top:1.5px solid var(--ink);background:var(--cream);text-transform:none;letter-spacing:.04em;line-height:1.5}
 .d-body p{margin-bottom:12px;font-size:13.5px;line-height:1.6}
 .d-table{width:100%;border-collapse:collapse;margin:16px 0}
@@ -671,7 +675,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
           <i style="inset:0;background:radial-gradient(circle at 2px 2px,#ffffff1c 1.2px,transparent 1.6px) 0 0/9px 9px"></i>
         </div>
         <div class="p-band"><div><div class="p-code wide" data-decode>VT-03</div><div class="p-sub">VTOL · Planeur solaire</div></div><svg width="42" viewBox="0 0 44 44"><path d="M22 4l18 32H4z" fill="none" stroke="#F5EEDD" stroke-width="4"/><circle cx="22" cy="26" r="6" fill="#F5EEDD"/></svg></div>
-        <div class="p-img" style="aspect-ratio:4/3"><img src="assets/wing.webp" width="1000" height="1190" alt="Aile volante en mousse" loading="lazy"></div>
+        <div class="p-img" style="aspect-ratio:4/3"><img src="assets/vtol-ranger.webp" width="1600" height="1200" alt="Le T1 Ranger, VTOL à moteurs basculants, tenu à bout de bras" loading="lazy"></div>
         <div class="p-body"><div class="p-name wide">Voilures fixes</div><p class="p-desc">Un VTOL tricoptère sous ArduPilot, en vol stationnaire depuis octobre 2026. Et un rêve en pause&nbsp;: un planeur solaire.</p></div>
         <div class="p-foot"><div><div class="scanlbl mono-s">Checkpoint scan</div><span class="bc" data-bc="VT-03-ARDUPILOT"></span></div><span class="status mono-s live" style="--c:#4FD15A">Vol stationnaire</span></div>
         <span class="open-hint mono-s">Dossier ↗</span>
@@ -1127,21 +1131,25 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
 
   /* ================= DRAWER ================= */
   const DATA = {
-    // video: 'assets/xxx.mp4' → la vidéo remplace l'image (img sert d'affiche) ; figs: [[image, légende]] → figures sous le texte
-    gb: { code: 'GB-01', title: 'Groundbrain', video: 'assets/groundbrain-vol.mp4', img: 'assets/groundbrain-vol.jpg', status: 'Testé en vol',
+    // video: 'assets/xxx.mp4' → la vidéo remplace l'image (img sert d'affiche) ; cap: légende du média ;
+    // pair: deux [image, légende] côte à côte ; figs: [[image ou .mp4, légende]] → figures sous le texte
+    gb: { code: 'GB-01', title: 'Groundbrain', video: 'assets/groundbrain-exterieur.mp4', img: 'assets/groundbrain-exterieur.jpg', status: 'Testé en vol',
+      cap: 'Vu de l\'extérieur : le drone vole, commandé depuis la station sol sur le PC. Rien n\'est ajouté à bord.',
       body: ['Un drone FPV de 75 mm (BetaFPV Air75, Betaflight) piloté par un PC, sans rien ajouter à bord. La vidéo analogique 5,8 GHz arrive sur l\'ordinateur par un récepteur USB ; un pilote automatique par vision décide ; les commandes repartent par la liaison ExpressLRS, à travers un émetteur RadioMaster Nomad piloté en CRSF.',
              'Le drone n\'a ni capteur d\'altitude ni capteur de position, et son attitude n\'arrive au sol que toutes les 3 s. Le pilote mesure donc à chaque image le décalage, le grossissement et la rotation de la scène, et alimente un filtre de Kalman par axe. Comme l\'image arrive avec 130 ms de retard, il rejoue les commandes déjà envoyées pour prédire où est le drone maintenant.',
              'Le correctif qui a tout changé : recaler le gyroscope avant l\'armement. Les vols coupés dans les 5 premières secondes sont passés de 16 sur 39 à 0 sur 26, et 12 vols de 45 s se sont posés seuls ensuite.',
              'Chaque vol est analysé avec la même méthode, et le rapport d\'essais dit aussi ce qui n\'est pas encore résolu.'],
       rows: [['Période', '7 → 10 octobre 2026'], ['Vols analysés', '67 · 65 en maintien de position · 30 tenus 20 s ou plus'], ['Atterrissages autonomes', '17, dont 12 vols de 45 s posés seuls'], ['Précision mesurée', '±5,5 cm le long du mur, ±10 cm en distance et en hauteur (marqueur ArUco, rotations comprises)'], ['Oscillation rapide', '2,6° / 2,8° → 0,6° / 0,4° (roulis / tangage) après réglage de la boucle'], ['Boucle · latence', '50 Hz · 130 ms de la commande à l\'image'], ['Jumeau numérique', 'Fidèle à ±1 cm en stationnaire'], ['Pas encore résolu', 'Dérive de l\'attitude annoncée (6 vols sur 13), oscillation lente « monte en reculant », pilotage assisté : 0 sur 7'], ['Stack', 'Python · OpenCV · Kalman · CRSF · ELRS']],
-      figs: [['assets/groundbrain-trajet.webp', 'Vol du 9 octobre, 23 h 33 : trajectoire en 3D, vue de dessus, de côté et écart dans le temps. Le marqueur est vu 98 % du vol.'], ['assets/groundbrain-station.webp', 'La station sol (mode démo).']],
+      figs: [['assets/groundbrain-vol.mp4', 'Vu depuis la caméra du drone : l\'image que reçoit la station sol, avec le marqueur ArUco (9 octobre, 23 h 33).'], ['assets/groundbrain-trajet.webp', 'Vol du 9 octobre, 23 h 33 : trajectoire en 3D, vue de dessus, de côté et écart dans le temps. Le marqueur est vu 98 % du vol.'], ['assets/groundbrain-station.webp', 'La station sol (mode démo).']],
       links: [['Dépôt GitHub', 'https://github.com/starman-tech/groundbrain'], ['Données des 65 vols (CSV)', 'https://github.com/starman-tech/groundbrain/blob/main/bilan_vols.csv']] },
     pr: { code: 'PR-02', title: 'PocketRush', img: 'assets/pocketrush.png', pix: true, status: 'Publié',
       body: ['Un simulateur FPV qui tourne directement dans une radio EdgeTX, sans ordinateur ni câble : on choisit un modèle qui n\'émet pas et on vole avec ses vrais manches et interrupteurs.',
              'L\'avion a besoin de vitesse, décroche et pique quand il est trop lent ; l\'aile volante n\'a pas de dérive et roule plus vite.'],
       rows: [['Période', 'Octobre 2026'], ['Appareils', 'Quad · avion · aile volante'], ['Circuits', 'Ovale, Huit, Vague · 8 portes chacun'], ['Modes', 'Angle / Horizon / Acro'], ['Extras', 'Rates Betaflight · fantôme du meilleur tour · vent'], ['Testé sur', 'Taranis X9D+ (2019), EdgeTX 2.11 ; écrans couleur testés sur banc PC'], ['Langage', 'Lua · licence GPL-3']],
       links: [['Dépôt GitHub', 'https://github.com/starman-tech/PocketRush']] },
-    vt: { code: 'VT-03', title: 'VTOL · Planeur solaire', img: 'assets/wing.webp', status: 'Vol stationnaire',
+    vt: { code: 'VT-03', title: 'VTOL · Planeur solaire', img: 'assets/vtol-ranger.webp', status: 'Vol stationnaire',
+      cap: 'Le T1 Ranger : deux moteurs avant basculants sous les ailes, un moteur arrière fixe.',
+      pair: [['assets/vtol-electronique.webp', 'La carte de vol dans le fuselage.'], ['assets/vtol-cablage.webp', 'Le fuselage ouvert, pendant le câblage.']],
       body: ['Un T1 Ranger monté en tricoptère à moteurs basculants (deux moteurs avant orientables, un arrière fixe), sous ArduPlane 4.7.1, avec une carte SpeedyBee F405 Wing, une batterie 4S 1 550 mAh, une liaison ExpressLRS et une Taranis.',
              'Firmware flashé le 11 octobre 2026, puis butées de servos, calibration des ESC et réglage des voies. Premier vol stationnaire le 19 octobre : environ 61 s en QHOVER, jusqu\'à 3 m de haut. Prochaine étape : la transition vers le vol d\'avancement. J\'ai écrit un outil MAVLink en Python pour diagnostiquer la carte et tester servos et moteurs ; chaque changement de paramètres est sauvegardé avant d\'être appliqué.',
              'Le planeur solaire, lui, est en pause : un planeur autonome de 5,6 m capable de voler très longtemps, dont j\'ai esquissé le bilan de puissance et l\'autonomie. C\'est un rêve que je garde pour plus tard. En 2025, j\'ai visité Kea Aerospace, en Nouvelle-Zélande, qui conçoit des drones solaires stratosphériques, avec son fondateur Mark Rocket.'],
@@ -1167,17 +1175,20 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
   };
   const drawer = $('#drawer'), scrim = $('#scrim'), dBody = $('#dBody');
   let lastFocus = null;
+  const fig = f => `<figure class="d-fig">${/\.mp4$/.test(f[0]) ? `<video src="${f[0]}" autoplay muted loop playsinline preload="metadata"></video>` : `<img src="${f[0]}" alt="" loading="lazy">`}<figcaption class="mono-s">${f[1]}</figcaption></figure>`;
   function openD(k) {
     const d = DATA[k]; if (!d) return; lastFocus = document.activeElement;
     $('#dHead').textContent = `Dossier ${d.code} · ${d.status}`; $('#dTab').textContent = d.code;
     dBody.innerHTML = `<div class="d-code wide">${d.code}</div><div class="d-title wide">${d.title}</div>` +
       (d.video ? `<div class="d-img"><video src="${d.video}" ${d.img ? `poster="${d.img}" ` : ''}autoplay muted loop playsinline></video></div>`
         : d.img ? `<div class="d-img${d.pix ? ' pix' : ''}"><img src="${d.img}" alt=""></div>` : '') +
+      (d.cap ? `<p class="d-cap mono-s">${d.cap}</p>` : '') +
       d.body.map(p => `<p>${p}</p>`).join('') +
-      (d.figs || []).map(f => `<figure class="d-fig"><img src="${f[0]}" alt="" loading="lazy"><figcaption class="mono-s">${f[1]}</figcaption></figure>`).join('') +
+      (d.pair ? `<div class="d-pair">${d.pair.map(fig).join('')}</div>` : '') +
+      (d.figs || []).map(fig).join('') +
       `<table class="d-table">${d.rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>` +
       (d.links.length ? `<div class="d-links mono-s">${d.links.map(l => `<a href="${l[1]}" target="_blank" rel="noopener">${l[0]} ↗</a>`).join('')}</div>` : '');
-    drawer.classList.add('on'); scrim.classList.add('on'); setModal(true);
+    dBody.scrollTop = 0; drawer.classList.add('on'); scrim.classList.add('on'); setModal(true);
     sfx.paper(); $('#dClose').focus();
   }
   function closeD() { if (!drawer.classList.contains('on')) return; drawer.classList.remove('on'); scrim.classList.remove('on'); setModal(false); sfx.paper(); lastFocus && lastFocus.focus(); }
