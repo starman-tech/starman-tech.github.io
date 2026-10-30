@@ -140,7 +140,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
 .route .arrow path{stroke-dasharray:420;stroke-dashoffset:420;animation:drawa .8s var(--out) 1.1s forwards}
 @keyframes drawa{to{stroke-dashoffset:0}}
 .pass-foot{grid-column:span 4;display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 16px;border-left:1.5px solid var(--ink);font-size:10.5px;letter-spacing:.22em}
-.stub{position:relative;border-left:2px dashed var(--ink);padding:16px;display:flex;flex-direction:column;justify-content:space-between;gap:12px}
+.stub{position:relative;cursor:grab;touch-action:none;user-select:none;border-left:2px dashed var(--ink);padding:16px;display:flex;flex-direction:column;justify-content:space-between;gap:12px}
 .stub::before,.stub::after{content:"";position:absolute;left:-13px;width:24px;height:24px;border-radius:50%;background:var(--char)}
 .stub::before{top:-12px}.stub::after{bottom:-12px}
 .stub .seat{font-size:62px;color:var(--red)}
@@ -355,14 +355,18 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
 .tk-b h3{font-size:20px;line-height:1}
 .tk-b p{font-size:12.5px}
 .tk-s{position:relative;min-height:42px;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--tkbg);border:var(--line);border-top:2px dashed currentColor;font-size:11px;letter-spacing:.2em;cursor:grab;touch-action:none;user-select:none}
-.tk-s.drag,.tear.drag{cursor:grabbing}
-.tk-s.snap,.tear.snap{transition:transform .45s var(--spring)}
-.tk-s.gone,.tear.gone{visibility:hidden}
+.tk-s.gone,.tear.gone,.stub.gone{visibility:hidden}
+.pass-re{position:absolute;z-index:3;display:flex;align-items:center;justify-content:center;border:2px dashed #f5eedd55;color:var(--steel);letter-spacing:.16em;animation:refade .4s .6s both}
+.pass-re[hidden]{display:none}
+.pass-re:hover{color:var(--amber);border-color:var(--amber)}
 .tk-re{display:none;position:absolute;left:0;right:0;bottom:0;height:42px;align-items:center;justify-content:center;border:2px dashed #24232a55;color:var(--muted);letter-spacing:.16em;cursor:pointer}
 .tk-re:hover{color:var(--red);border-color:var(--red)}
 .tk.torn .tk-re{display:flex;animation:refade .4s .6s both}
 @keyframes refade{from{opacity:0}}
-.flyer{position:fixed;z-index:97;margin:0;pointer-events:none;will-change:transform}
+.paper-layer{position:fixed;inset:0;z-index:97;pointer-events:none}
+.paper-cell{position:absolute;left:0;top:0;overflow:hidden;transform-origin:0 0;will-change:transform}
+.paper-cell .shade{position:absolute;inset:0;background:#000;pointer-events:none}
+.paper-cell.back .paper-copy>*{visibility:hidden}
 .fiber{position:fixed;z-index:96;width:3px;height:7px;border-radius:1px;pointer-events:none}
 .tk-s::before,.tk-s::after{content:"";position:absolute;top:-10px;width:18px;height:18px;border-radius:50%;background:var(--paper-2);border:2px solid var(--ink)}
 .tk-s::before{left:-11px}.tk-s::after{right:-11px}
@@ -523,13 +527,14 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
           <div class="stamp" id="stamp" aria-hidden="true">Embarquement<small>Now boarding · 06.2027</small></div>
         </div>
       </div>
-      <aside class="stub">
+      <aside class="stub" tabindex="0" role="button" aria-label="Détacher le talon" data-cursor="Détacher">
         <div class="mono-s">Siège / Seat</div>
         <div class="seat wide">A2</div>
         <span class="bc" data-bc="MATTEOCEAN-A2-2027" style="height:56px"></span>
         <div class="mono-s" style="font-size:10px">Nº 2017—2026</div>
       </aside>
     </article>
+    <button class="pass-re mono-s" id="passRe" type="button" hidden>Recoller le talon</button>
   </div>
 
   <div class="hero-intro">
@@ -972,6 +977,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
   const pw = $('#passWrap'), pass = $('#pass');
   if (!reduce && matchMedia('(pointer:fine)').matches) {
     pw.addEventListener('mousemove', e => {
+      if (pass.classList.contains('hold')) return;
       const r = pw.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
       pass.style.transform = `rotateY(${(x - .5) * 6}deg) rotateX(${(.5 - y) * 5}deg)`;
       pass.style.setProperty('--gx', x * 100 + '%'); pass.style.setProperty('--gy', y * 100 + '%');
@@ -1159,115 +1165,226 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
     });
   });
 
-  /* ================= TEAR-OFF STUBS ================= */
-  // A stub tears along one perforated edge: 'top' for the crew tickets, 'left' for the CV stub.
-  // The tear starts at the end of the perforation nearest the pointer and runs to the other end,
-  // so the stub hinges on what is still attached; past the threshold it detaches and falls.
-  const TEAR_AT = 130, MAX_ANG = 16;
+  /* ================= PAPER STUBS (tear-off physics) ================= */
+  // A stub becomes a sheet of Verlet particles held together by distance constraints
+  // (structure, shear, bending). Its perforated edge is a row of pins that break under strain,
+  // so the tear starts where you pull and runs along the dashed line. Once free, the sheet falls
+  // under gravity with air drag on its faces. It is drawn as a mesh: one clipped copy of the stub
+  // per cell, mapped onto its projected quad with a perspective matrix3d, shaded by its normal.
+  const G = 1100, CAM = 1100, STEP = 1 / 120, ITER = 10, AIR = 4.2, PIN_LIM = 5.5, VMAX = 12;
   const jag = (n, depth) => Array.from({ length: n + 1 }, (_, i) => [i / n * 100, Math.random() * depth]);
-  const jagTop = pts => `polygon(${pts.map(([x, j]) => `${x}% ${j.toFixed(1)}px`).join(',')},100% 100%,0 100%)`;
-  const jagLeft = pts => `polygon(${pts.map(([y, j]) => `${j.toFixed(1)}px ${y}%`).join(',')},100% 100%,100% 0)`;
   const jagBottom = pts => `polygon(0 0,100% 0,${pts.reverse().map(([x, j]) => `${x}% calc(100% - ${j.toFixed(1)}px)`).join(',')})`;
+  const bgOf = el => { for (; el; el = el.parentElement) { const c = getComputedStyle(el).backgroundColor; if (c && !/rgba\(.*,\s*0\)|transparent/.test(c)) return c; } return '#F5EEDD'; };
+  let layerEl = null;
+  const layer = () => layerEl || (layerEl = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'paper-layer' })));
 
   function fibers(x, y, color, k = 3) {
-    if (reduce) return;
     for (let i = 0; i < k; i++) {
       const f = document.createElement('i'); f.className = 'fiber';
-      f.style.cssText = `left:${x + Math.random() * 10 - 5}px;top:${y + Math.random() * 6 - 3}px;background:${Math.random() < .5 ? color : '#F5EEDD'}`;
+      f.style.cssText = `left:${x + Math.random() * 8 - 4}px;top:${y + Math.random() * 6 - 3}px;background:${Math.random() < .5 ? color : '#F5EEDD'}`;
       document.body.appendChild(f);
       f.animate([{ transform: 'translate(0,0) rotate(0)', opacity: 1 },
-                 { transform: `translate(${Math.random() * 60 - 30}px,${40 + Math.random() * 70}px) rotate(${Math.random() * 540 - 270}deg)`, opacity: 0 }],
-        { duration: 600 + Math.random() * 400, easing: 'cubic-bezier(.2,.6,.4,1)' }).onfinish = () => f.remove();
+                 { transform: `translate(${Math.random() * 70 - 35}px,${50 + Math.random() * 90}px) rotate(${Math.random() * 720 - 360}deg)`, opacity: 0 }],
+        { duration: 700 + Math.random() * 500, easing: 'cubic-bezier(.2,.6,.4,1)' }).onfinish = () => f.remove();
     }
   }
 
-  // the detached stub becomes a fixed-position copy that falls with gravity, air drag and a little flutter
-  function fly(el, r, origin, ang, vx, vy) {
-    const c = el.cloneNode(true), cs = getComputedStyle(el);
-    c.removeAttribute('id'); c.removeAttribute('tabindex'); c.setAttribute('aria-hidden', 'true'); c.classList.remove('drag', 'snap'); c.classList.add('flyer');
-    Object.assign(c.style, { inset: 'auto', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px',
-      background: cs.backgroundColor, color: cs.color, transformOrigin: origin, transform: `rotate(${ang}deg)` });
-    document.body.appendChild(c);
-    if (reduce) { c.animate([{ opacity: 1 }, { opacity: 0 }], 250).onfinish = () => c.remove(); return; }
-    let x = 0, y = 0, a = ang, va = (vx >= 0 ? 1 : -1) * (90 + Math.random() * 120);
-    const t0 = performance.now(); let last = t0;
-    (function step(now) {
-      const dt = Math.min(.033, (now - last) / 1000); last = now;
-      vy += 1500 * dt; vx *= 1 - .9 * dt; vy *= 1 - .25 * dt; va *= 1 - .6 * dt;
-      x += vx * dt; y += vy * dt; a += va * dt;
-      const tilt = Math.sin((now - t0) / 1000 * 9) * 28;
-      c.style.transform = `perspective(700px) translate(${x}px,${y}px) rotate(${a}deg) rotateX(${tilt}deg)`;
-      if (r.top + y < innerHeight + 200) requestAnimationFrame(step); else c.remove();
-    })(t0);
+  // matrix3d mapping the rect (sx, sy, w, h) of an element onto the quad q = [tl, tr, br, bl] (Heckbert's square-to-quad)
+  const convex = q => { let s = 0; for (let i = 0; i < 4; i++) { const a = q[i], b = q[(i + 1) % 4], c = q[(i + 2) % 4];
+    const z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]); if (!s) s = Math.sign(z); else if (Math.sign(z) !== s) return false; } return true; };
+  function quad(sx, sy, w, h, q) {
+    if (!convex(q)) q = [q[0], q[1], [q[1][0] + q[3][0] - q[0][0], q[1][1] + q[3][1] - q[0][1]], q[3]];   // parallelogram: affine, never singular
+    const [p0, p1, p2, p3] = q;
+    const dx1 = p1[0] - p2[0], dx2 = p3[0] - p2[0], dx3 = p0[0] - p1[0] + p2[0] - p3[0];
+    const dy1 = p1[1] - p2[1], dy2 = p3[1] - p2[1], dy3 = p0[1] - p1[1] + p2[1] - p3[1];
+    const det = dx1 * dy2 - dx2 * dy1 || 1e-9;
+    const g = (dx3 * dy2 - dx2 * dy3) / det, k = (dx1 * dy3 - dx3 * dy1) / det;
+    const a = p1[0] - p0[0] + g * p1[0], b = p3[0] - p0[0] + k * p3[0], c = p0[0];
+    const d = p1[1] - p0[1] + g * p1[1], e = p3[1] - p0[1] + k * p3[1], f = p0[1];
+    const tu = -sx / w, tv = -sy / h;
+    return `matrix3d(${a / w},${d / w},0,${g / w},${b / h},${e / h},0,${k / h},0,0,1,0,${a * tu + b * tv + c},${d * tu + e * tv + f},0,${g * tu + k * tv + 1})`;
   }
 
-  function tearable(stub, edge, onTear) {
-    const n = edge === 'top' ? [0, 1] : [1, 0];
-    let st = null, torn = false;
-    function pose(p, side) {
-      const e = 1 - (1 - p) ** 2, ang = MAX_ANG * e * ((edge === 'top') === (side === 'a') ? -1 : 1);
-      const origin = edge === 'top' ? (side === 'a' ? '100% 0' : '0 0') : (side === 'a' ? '0 100%' : '0 0');
-      stub.style.transformOrigin = origin;
-      stub.style.transform = `translate(${n[0] * e * 10}px,${n[1] * e * 10}px) rotate(${ang}deg)`;
-      return { ang, origin };
+  function paper(el, edge, { onTear, onRest }) {
+    const r = el.getBoundingClientRect(), W = r.width, H = r.height, cs = getComputedStyle(el), bg = bgOf(el);
+    let cols = Math.max(3, Math.round(W / 26)), rows = Math.max(2, Math.round(H / 26));
+    while (cols * rows > 64) cols > rows ? cols-- : rows--;
+    const NX = cols + 1, N = NX * (rows + 1), id = (i, j) => (j * NX + i) * 3;
+    const P = new Float64Array(N * 3), Q = new Float64Array(N * 3), R = new Float64Array(N * 3);   // position, previous, rest
+    for (let j = 0; j <= rows; j++) for (let i = 0; i <= cols; i++) {
+      const k = id(i, j); P[k] = Q[k] = R[k] = r.left + W * i / cols; P[k + 1] = Q[k + 1] = R[k + 1] = r.top + H * j / rows;
     }
-    // fibres fly from the tip of the tear as it runs along the perforation
-    function front(s) {
-      const r = s.r, color = getComputedStyle(stub).backgroundColor;
-      if (edge === 'top') fibers(s.side === 'a' ? r.left + s.p * r.width : r.right - s.p * r.width, r.top, color);
-      else fibers(r.left, s.side === 'a' ? r.top + s.p * r.height : r.bottom - s.p * r.height, color);
+    const C = [];                                                     // [a, b, rest, stiffness]
+    const link = (a, b, s) => C.push([a, b, Math.hypot(R[a] - R[b], R[a + 1] - R[b + 1]), s]);
+    for (let j = 0; j <= rows; j++) for (let i = 0; i <= cols; i++) {
+      if (i < cols) link(id(i, j), id(i + 1, j), 1);
+      if (j < rows) link(id(i, j), id(i, j + 1), 1);
+      if (i < cols && j < rows) { link(id(i, j), id(i + 1, j + 1), .7); link(id(i + 1, j), id(i, j + 1), .7); }
+      if (i < cols - 1) link(id(i, j), id(i + 2, j), .35);          // bending: paper curls but springs back
+      if (j < rows - 1) link(id(i, j), id(i, j + 2), .35);
     }
-    function detach(side, vx, vy) {
-      torn = true; const { ang, origin } = pose(1, side);
-      stub.style.transform = 'none'; const r = stub.getBoundingClientRect();
-      stub.style.clipPath = edge === 'top' ? jagTop(jag(18, 4)) : jagLeft(jag(14, 4));
-      fly(stub, r, origin, ang, vx, vy);
-      stub.classList.add('gone'); stub.setAttribute('aria-hidden', 'true'); stub.tabIndex = -1;
-      onTear && onTear();
+    const pins = [];
+    if (edge === 'top') for (let i = 0; i <= cols; i++) { const k = id(i, 0); pins.push({ k, x: R[k], y: R[k + 1], lim: PIN_LIM, on: true }); }
+    else for (let j = 0; j <= rows; j++) { const k = id(0, j); pins.push({ k, x: R[k], y: R[k + 1], lim: PIN_LIM, on: true }); }
+
+    // one small window per cell, showing its part of a copy of the stub, so every transformed point stays inside its quad
+    const L = layer(), cells = [], ov = .7;
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const sx = W * i / cols, sy = H * j / rows, w = W / cols, h = H / rows;
+      const cell = document.createElement('div'), c = el.cloneNode(true), sh = document.createElement('i');
+      ['id', 'tabindex', 'role', 'aria-label', 'data-cursor'].forEach(a => c.removeAttribute(a));
+      c.classList.remove('drag', 'gone'); c.classList.add('paper-copy');
+      Object.assign(c.style, { position: 'absolute', inset: 'auto', left: ov - sx + 'px', top: ov - sy + 'px', margin: '0', width: W + 'px', height: H + 'px',
+        background: bg, color: cs.color, transform: 'none', transition: 'none', animation: 'none' });
+      cell.className = 'paper-cell'; cell.setAttribute('aria-hidden', 'true');
+      Object.assign(cell.style, { width: w + 2 * ov + 'px', height: h + 2 * ov + 'px' });
+      sh.className = 'shade'; cell.append(c, sh); L.appendChild(cell);
+      cells.push({ c: cell, sh, w, h, a: id(i, j), b: id(i + 1, j), d: id(i, j + 1), e: id(i + 1, j + 1), back: false });
     }
-    function auto(side) {
-      if (torn) return;
-      if (reduce) { detach(side, 0, 0); return; }
-      const s = { side, p: 0, emitted: 0, r: stub.getBoundingClientRect() }, t0 = performance.now();
-      (function step(now) {
-        s.p = Math.min(1, (now - t0) / 420); pose(s.p, side);
-        if (s.p - s.emitted > .12) { s.emitted = s.p; front(s); }
-        if (s.p < 1) requestAnimationFrame(step);
-        else detach(side, edge === 'top' ? (side === 'a' ? 140 : -140) : 320, edge === 'top' ? 160 : 60);
-      })(t0);
+
+    let grab = -1, T = [0, 0, 0], g0 = [0, 0], released = false, broken = 0, free = false, done = false;
+    let acc = 0, last = performance.now(), calm = 0, sx0 = scrollX, sy0 = scrollY;
+
+    function snapPin(p) {
+      p.on = false; broken++;
+      pins.forEach(o => { if (o.on && Math.abs(o.k - p.k) <= (edge === 'top' ? 6 : NX * 6)) o.lim *= .86; });   // stress concentrates next to the gap
+      fibers(P[p.k], P[p.k + 1], bg, 2);
+      if (broken === pins.length) { free = true; grab = -1; onTear(); }
     }
-    function snapBack(side) { stub.classList.add('snap'); pose(0, side); setTimeout(() => stub.classList.remove('snap'), 450); }
-    stub.addEventListener('pointerdown', e => {
-      if (torn || e.button > 0) return;
-      const r = stub.getBoundingClientRect();
-      const side = edge === 'top' ? (e.clientX < r.left + r.width / 2 ? 'a' : 'b') : (e.clientY < r.top + r.height / 2 ? 'a' : 'b');
-      st = { x: e.clientX, y: e.clientY, r, side, p: 0, emitted: 0, hist: [[e.clientX, e.clientY, e.timeStamp]] };
-      stub.setPointerCapture(e.pointerId); stub.classList.add('drag');
-    });
-    stub.addEventListener('pointermove', e => {
-      if (!st) return;
-      const dx = e.clientX - st.x, dy = e.clientY - st.y;
-      st.p = Math.min(1, (Math.max(0, dx * n[0] + dy * n[1]) + .35 * Math.abs(dx * n[1] + dy * n[0])) / TEAR_AT);
-      st.hist.push([e.clientX, e.clientY, e.timeStamp]); if (st.hist.length > 6) st.hist.shift();
-      pose(st.p, st.side);
-      if (st.p - st.emitted > .1) { st.emitted = st.p; front(st); }
-      if (st.p >= 1) {
-        // fling the stub with the speed of the gesture
-        const s = st, a = s.hist[0], b = s.hist[s.hist.length - 1], dt = Math.max(16, b[2] - a[2]) / 1000;
-        st = null; stub.classList.remove('drag'); detach(s.side, (b[0] - a[0]) / dt, Math.max(0, (b[1] - a[1]) / dt));
+    function aero(dt) {
+      // pressure drag: each cell pushes back along its normal, proportional to its normal velocity
+      for (const cl of cells) {
+        const { a, b, d, e } = cl;
+        const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
+        const vx = P[d] - P[a], vy = P[d + 1] - P[a + 1], vz = P[d + 2] - P[a + 2];
+        let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const nl = Math.hypot(nx, ny, nz) || 1;
+        nx /= nl; ny /= nl; nz /= nl;
+        for (const k of [a, b, d, e]) {
+          const vn = ((P[k] - Q[k]) * nx + (P[k + 1] - Q[k + 1]) * ny + (P[k + 2] - Q[k + 2]) * nz) / dt;
+          const s = -AIR * vn * dt * dt * .25;
+          P[k] += nx * s; P[k + 1] += ny * s; P[k + 2] += nz * s;
+        }
       }
+    }
+    function sub(dt) {
+      const g = broken ? G * dt * dt : 0;
+      for (let k = 0; k < N * 3; k += 3) {
+        let vx = P[k] - Q[k], vy = P[k + 1] - Q[k + 1], vz = P[k + 2] - Q[k + 2];
+        const sp = Math.hypot(vx, vy, vz); if (sp > VMAX) { vx *= VMAX / sp; vy *= VMAX / sp; vz *= VMAX / sp; }   // caps the speed per step
+        Q[k] = P[k]; Q[k + 1] = P[k + 1]; Q[k + 2] = P[k + 2];
+        P[k] += vx * .997; P[k + 1] += vy * .997 + g; P[k + 2] += vz * .997;
+      }
+      if (broken) aero(dt);
+      for (let it = 0; it < ITER; it++) {
+        for (const [a, b, rest, s] of C) {
+          const dx = P[b] - P[a], dy = P[b + 1] - P[a + 1], dz = P[b + 2] - P[a + 2], dl = Math.hypot(dx, dy, dz) || 1e-6;
+          const m = (dl - rest) / dl * .5 * s;
+          P[a] += dx * m; P[a + 1] += dy * m; P[a + 2] += dz * m; P[b] -= dx * m; P[b + 1] -= dy * m; P[b + 2] -= dz * m;
+        }
+        if (grab >= 0) { P[grab] += (T[0] - P[grab]) * .5; P[grab + 1] += (T[1] - P[grab + 1]) * .5; P[grab + 2] += (T[2] - P[grab + 2]) * .5; }
+        for (const p of pins) if (p.on) {
+          const dx = P[p.k] - p.x, dy = P[p.k + 1] - p.y, dz = P[p.k + 2];
+          if (Math.hypot(dx, dy, dz) > p.lim) snapPin(p); else { P[p.k] = p.x; P[p.k + 1] = p.y; P[p.k + 2] = 0; }
+        }
+        if (!broken && grab < 0) for (let k = 0; k < N * 3; k++) P[k] += (R[k] - P[k]) * .08;   // untorn: lies back flat
+      }
+      if (released && broken && !free) pins.forEach(p => p.on && (p.lim *= .97));        // its own weight finishes the tear
+    }
+    function render() {
+      const cx = innerWidth / 2, cy = innerHeight / 2;
+      const pr = k => { const s = CAM / (CAM - Math.min(P[k + 2], CAM * .8)); return [cx + (P[k] - cx) * s, cy + (P[k + 1] - cy) * s]; };
+      for (const cl of cells) {
+        const { a, b, d, e } = cl;
+        cl.c.style.transform = quad(ov, ov, cl.w, cl.h, [pr(a), pr(b), pr(e), pr(d)]);
+        // normal from the two diagonals: steadier than one corner, so neighbouring cells shade alike
+        const ux = P[e] - P[a], uy = P[e + 1] - P[a + 1], uz = P[e + 2] - P[a + 2];
+        const vx = P[d] - P[b], vy = P[d + 1] - P[b + 1], vz = P[d + 2] - P[b + 2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1;
+        const back = nz < 0, f = back ? -1 : 1;
+        const lam = Math.max(0, f * (-.3 * nx - .42 * ny + .86 * nz) / nl);              // light from the top left, in front
+        cl.sh.style.opacity = ((1 - lam) * .38 + (back ? .06 : 0)).toFixed(3);
+        if (back !== cl.back) { cl.back = back; cl.c.classList.toggle('back', back); }
+      }
+    }
+    function frame(now) {
+      if (done) return;
+      const ddx = scrollX - sx0, ddy = scrollY - sy0;
+      if (ddx || ddy) {                                                                 // the page moved under the sheet
+        for (const A of [P, Q, R]) for (let k = 0; k < N * 3; k += 3) { A[k] -= ddx; A[k + 1] -= ddy; }
+        pins.forEach(p => { p.x -= ddx; p.y -= ddy; }); T[0] -= ddx; T[1] -= ddy; sx0 = scrollX; sy0 = scrollY;
+      }
+      acc = Math.min(acc + (now - last) / 1000, .1); last = now;
+      while (acc >= STEP) { sub(STEP); acc -= STEP; }
+      render();
+      if (free) {
+        let low = true; for (let k = 1; k < N * 3; k += 3) if (P[k] < innerHeight + 160) { low = false; break; }
+        if (low) return end();
+      } else if (!broken && grab < 0) {
+        let dev = 0; for (let k = 0; k < N * 3; k++) dev = Math.max(dev, Math.abs(P[k] - R[k]));
+        if (dev < .25 && ++calm > 6) { end(); return onRest(); }
+      }
+      requestAnimationFrame(frame);
+    }
+    function end() { done = true; cells.forEach(cl => cl.c.remove()); }
+    function nearest(x, y) {
+      let best = 0, bd = Infinity;
+      for (let k = 0; k < N * 3; k += 3) { const dd = (P[k] - x) ** 2 + (P[k + 1] - y) ** 2; if (dd < bd) { bd = dd; best = k; } }
+      return best;
+    }
+    render(); requestAnimationFrame(frame);
+    return {
+      // the grabbed particle keeps its offset from the finger, so taking hold does not jolt the sheet
+      grab(x, y) { if (free) return; grab = nearest(x, y); T = [P[grab], P[grab + 1], 0]; g0 = [x, y, P[grab] - x, P[grab + 1] - y]; released = false; },
+      move(x, y) { if (grab < 0) return; T = [x + g0[2], y + g0[3], Math.min(90, Math.hypot(x - g0[0], y - g0[1]) * .32)]; },
+      release() { grab = -1; released = true; },
+      // a tap: pull the grabbed corner away from the perforation with a flick, then let go
+      flick() {
+        if (grab < 0) return;
+        const n = edge === 'top' ? [0, 1] : [1, 0], t0 = performance.now(), sx = P[grab], sy = P[grab + 1];
+        const side = edge === 'top' ? (P[grab] < r.left + W / 2 ? 1 : -1) : (P[grab + 1] < r.top + H / 2 ? 1 : -1);
+        (function pull(now) {
+          const t = Math.min(1, (now - t0) / 520), e = t * t * (3 - 2 * t);
+          T = [sx + n[0] * 230 * e + n[1] * side * 60 * e, sy + n[1] * 230 * e + n[0] * side * 40 * e, 110 * Math.sin(e * Math.PI * .8)];
+          if (t < 1 && !free) requestAnimationFrame(pull); else { grab = -1; released = true; }
+        })(t0);
+      }
+    };
+  }
+
+  // edgeOf() tells which side of the stub is perforated, read when the tear starts (it moves with the layout)
+  function tearable(stub, edgeOf, { onTear, onStart, onRest } = {}) {
+    let sheet = null, torn = false, ptr = null;
+    function begin(x, y) {
+      if (torn) return null;
+      if (!sheet) {
+        onStart && onStart();
+        if (reduce) { torn = true; stub.classList.add('gone'); onTear && onTear(); return null; }
+        sheet = paper(stub, edgeOf(), {
+          onTear: () => { torn = true; stub.setAttribute('aria-hidden', 'true'); stub.tabIndex = -1; onTear && onTear(); },
+          onRest: () => { sheet = null; stub.classList.remove('gone'); onRest && onRest(); }
+        });
+        stub.classList.add('gone');
+      }
+      sheet.grab(x, y); return sheet;
+    }
+    stub.addEventListener('pointerdown', e => {
+      if (e.button > 0 || !begin(e.clientX, e.clientY)) return;
+      e.preventDefault(); ptr = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0 };
     });
-    stub.addEventListener('pointerup', () => {
-      if (!st) return; const s = st; st = null; stub.classList.remove('drag');
-      if (s.p < .04) auto(s.side); else snapBack(s.side);   // a tap tears it for you
+    addEventListener('pointermove', e => {
+      if (!ptr || e.pointerId !== ptr.id || !sheet) return;
+      ptr.moved = Math.max(ptr.moved, Math.hypot(e.clientX - ptr.x, e.clientY - ptr.y)); sheet.move(e.clientX, e.clientY);
     });
-    stub.addEventListener('pointercancel', () => { if (!st) return; const s = st; st = null; stub.classList.remove('drag'); snapBack(s.side); });
-    stub.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); auto('a'); } });
+    const up = e => { if (!ptr || e.pointerId !== ptr.id) return; const p = ptr; ptr = null; if (!sheet) return; p.moved < 5 ? sheet.flick() : sheet.release(); };
+    addEventListener('pointerup', up); addEventListener('pointercancel', up);
+    stub.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return; e.preventDefault();
+      const r = stub.getBoundingClientRect(), s = begin(r.left + 6, r.bottom - 6); s && s.flick();
+    });
     return {
       restore() {
-        torn = false; stub.style.clipPath = ''; stub.style.transform = ''; stub.classList.remove('gone');
-        stub.removeAttribute('aria-hidden'); stub.tabIndex = 0;
-        if (!reduce) stub.animate([{ transform: 'translateY(30px) rotate(5deg)', opacity: 0 }, { transform: 'none', opacity: 1 }],
+        torn = false; sheet = null; stub.classList.remove('gone'); stub.removeAttribute('aria-hidden'); stub.tabIndex = 0;
+        if (!reduce) stub.animate([{ transform: 'translateY(26px) rotate(4deg)', opacity: 0 }, { transform: 'none', opacity: 1 }],
           { duration: 560, easing: 'cubic-bezier(.3,1.6,.5,1)' });
       }
     };
@@ -1275,10 +1392,28 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
 
   $$('.tk').forEach(tk => {
     const top = $('.tk-top', tk), stub = $('.tk-s', tk), re = $('.tk-re', tk);
-    const t = tearable(stub, 'top', () => { top.style.clipPath = jagBottom(jag(18, 4)); tk.classList.add('torn'); });
+    const t = tearable(stub, () => 'top', { onTear: () => { top.style.clipPath = jagBottom(jag(18, 4)); tk.classList.add('torn'); } });
     re.addEventListener('click', () => { tk.classList.remove('torn'); top.style.clipPath = ''; t.restore(); stub.focus({ preventScroll: true }); });
   });
-  tearable($('#tear'), 'left');
+
+  // the boarding pass stub: perforated on its left on wide screens, on its top once the pass stacks
+  const pStub = $('.pass .stub'), passRe = $('#passRe');
+  const pEdge = () => getComputedStyle(pStub).borderTopStyle === 'dashed' ? 'top' : 'left';
+  const pt = tearable(pStub, pEdge, {
+    onStart: () => { pass.classList.add('hold'); pass.style.transition = 'none'; pass.style.transform = ''; void pass.offsetWidth; },
+    onRest: () => { pass.classList.remove('hold'); pass.style.transition = ''; },
+    onTear: () => {
+      const x = pStub.offsetLeft, y = pStub.offsetTop, pts = jag(16, 5);
+      pass.style.clipPath = pEdge() === 'left'
+        ? `polygon(0 0,${pts.map(([v, j]) => `${(x - j).toFixed(1)}px ${v}%`).join(',')},0 100%)`
+        : `polygon(0 0,100% 0,${pts.reverse().map(([v, j]) => `${v}% ${(y - j).toFixed(1)}px`).join(',')})`;
+      Object.assign(passRe.style, { left: pass.offsetLeft + x + 'px', top: pass.offsetTop + y + 'px', width: pStub.offsetWidth + 'px', height: pStub.offsetHeight + 'px' });
+      passRe.hidden = false; pass.classList.remove('hold'); pass.style.transition = '';
+    }
+  });
+  passRe.addEventListener('click', () => { passRe.hidden = true; pass.style.clipPath = ''; pt.restore(); pStub.focus({ preventScroll: true }); });
+
+  tearable($('#tear'), () => 'left');
 })();
 </script>
 </body>
