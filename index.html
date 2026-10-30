@@ -349,7 +349,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
 .tk{position:relative;display:flex;flex-direction:column;--tkbg:var(--cream)}
 .tk.red{--tkbg:var(--red);color:var(--cream)}
 .tk.grn{--tkbg:var(--green);color:var(--cream)}
-.tk-top{flex:1;display:flex;flex-direction:column;background:var(--tkbg);border:var(--line);border-bottom:0}
+.tk-top{position:relative;flex:1;display:flex;flex-direction:column;background:var(--tkbg);border:var(--line);border-bottom:0}
 .tk-h{display:flex;justify-content:space-between;padding:10px 12px;border-bottom:2px solid currentColor;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase}
 .tk-b{flex:1;padding:18px 14px;display:flex;flex-direction:column;gap:12px}
 .tk-b h3{font-size:20px;line-height:1}
@@ -363,11 +363,15 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
 .tk-re:hover{color:var(--red);border-color:var(--red)}
 .tk.torn .tk-re{display:flex;animation:refade .4s .6s both}
 @keyframes refade{from{opacity:0}}
-.paper-layer{position:fixed;inset:0;z-index:97;pointer-events:none}
-.paper-cell{position:absolute;left:0;top:0;overflow:hidden;transform-origin:0 0;will-change:transform}
-.paper-cell .shade{position:absolute;inset:0;background:#000;pointer-events:none}
-.paper-cell.back .paper-copy>*{visibility:hidden}
-.fiber{position:fixed;z-index:96;width:3px;height:7px;border-radius:1px;pointer-events:none}
+.paper-layer{position:absolute;left:0;top:0;overflow:hidden;pointer-events:none;z-index:97;perspective:1400px}
+.rig{position:absolute;transform-style:preserve-3d;pointer-events:none}
+.rig.grabbable{pointer-events:auto;cursor:grab;touch-action:none}
+.slice{position:absolute;transform-style:preserve-3d}
+.face{position:absolute;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.face.back{transform:rotateY(180deg)}
+.face .shade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
+.rim{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:4}
+.fiber{position:absolute;border-radius:1px;pointer-events:none}
 .tk-s::before,.tk-s::after{content:"";position:absolute;top:-10px;width:18px;height:18px;border-radius:50%;background:var(--paper-2);border:2px solid var(--ink)}
 .tk-s::before{left:-11px}.tk-s::after{right:-11px}
 
@@ -1165,226 +1169,325 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
     });
   });
 
-  /* ================= PAPER STUBS (tear-off physics) ================= */
-  // A stub becomes a sheet of Verlet particles held together by distance constraints
-  // (structure, shear, bending). Its perforated edge is a row of pins that break under strain,
-  // so the tear starts where you pull and runs along the dashed line. Once free, the sheet falls
-  // under gravity with air drag on its faces. It is drawn as a mesh: one clipped copy of the stub
-  // per cell, mapped onto its projected quad with a perspective matrix3d, shaded by its normal.
-  const G = 1100, CAM = 1100, STEP = 1 / 120, ITER = 10, AIR = 4.2, PIN_LIM = 5.5, VMAX = 12;
-  const jag = (n, depth) => Array.from({ length: n + 1 }, (_, i) => [i / n * 100, Math.random() * depth]);
-  const jagBottom = pts => `polygon(0 0,100% 0,${pts.reverse().map(([x, j]) => `${x}% calc(100% - ${j.toFixed(1)}px)`).join(',')})`;
+  /* ================= PAPER STUBS ================= */
+  // Paper does not stretch. While the stub is torn, the part still attached stays flat on the card and
+  // the torn flap, held by the corner under your finger, pivots on the tip of the crack: when your
+  // finger is farther than the flap can reach, the tension runs the crack along the perforation; when
+  // it is nearer, the flap cannot shorten, so it bows out of the page. Torn off but still held, it hangs from your finger
+  // like a pendulum. Let go, it falls as a plate in air (drag across its face and the pitching moment
+  // that turns it broadside), so a narrow strip tumbles and a wider piece flutters from side to side.
+  const SLICES = 16, TEAR_SPEED = 1100, PHI_MAX = 1.05, TEAR_START = 9, TEAR_RUN = 2.5, PAPER_BACK = '#EFE7D6', RIM = '#FFFBF1';
+  const FLUTTER = { g: 700, Cn: .02, Ct: .0009, Cr: .00025, Cw: 3 }, TUMBLE = { g: 700, Cn: .018, Ct: .0003, Cr: .0001, Cw: .8 };
   const bgOf = el => { for (; el; el = el.parentElement) { const c = getComputedStyle(el).backgroundColor; if (c && !/rgba\(.*,\s*0\)|transparent/.test(c)) return c; } return '#F5EEDD'; };
+  const rot = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
   let layerEl = null;
-  const layer = () => layerEl || (layerEl = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'paper-layer' })));
+  function aim() {
+    const d = document.documentElement;
+    Object.assign(layerEl.style, { width: d.scrollWidth + 'px', height: d.scrollHeight + 'px', perspectiveOrigin: `${scrollX + innerWidth / 2}px ${scrollY + innerHeight / 2}px` });
+  }
+  function layer() {
+    if (!layerEl) {
+      layerEl = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'paper-layer' }));
+      addEventListener('scroll', aim, { passive: true }); addEventListener('resize', aim);
+    }
+    aim(); return layerEl;
+  }
 
-  function fibers(x, y, color, k = 3) {
-    for (let i = 0; i < k; i++) {
-      const f = document.createElement('i'); f.className = 'fiber';
-      f.style.cssText = `left:${x + Math.random() * 8 - 4}px;top:${y + Math.random() * 6 - 3}px;background:${Math.random() < .5 ? color : '#F5EEDD'}`;
-      document.body.appendChild(f);
+  // loose paper fibres shed by the tip of the tear
+  function fibers(x, y, color) {
+    for (let i = 0; i < 2; i++) {
+      const f = document.createElement('i'), hair = Math.random() < .7;
+      f.className = 'fiber';
+      f.style.cssText = `left:${x + Math.random() * 6 - 3}px;top:${y + Math.random() * 4 - 2}px;width:${hair ? 1 : 3}px;height:${hair ? 4 + Math.random() * 5 : 3}px;background:${hair ? RIM : color}`;
+      layer().appendChild(f);
+      const dx = Math.random() * 50 - 25, dy = 60 + Math.random() * 80;
       f.animate([{ transform: 'translate(0,0) rotate(0)', opacity: 1 },
-                 { transform: `translate(${Math.random() * 70 - 35}px,${50 + Math.random() * 90}px) rotate(${Math.random() * 720 - 360}deg)`, opacity: 0 }],
-        { duration: 700 + Math.random() * 500, easing: 'cubic-bezier(.2,.6,.4,1)' }).onfinish = () => f.remove();
+                 { transform: `translate(${dx * .5}px,${dy * .45}px) rotate(${Math.random() * 300}deg)`, opacity: 1, offset: .45 },
+                 { transform: `translate(${dx}px,${dy}px) rotate(${Math.random() * 600}deg)`, opacity: 0 }],
+        { duration: 1100 + Math.random() * 700, easing: 'ease-in' }).onfinish = () => f.remove();
     }
   }
 
-  // matrix3d mapping the rect (sx, sy, w, h) of an element onto the quad q = [tl, tr, br, bl] (Heckbert's square-to-quad)
-  const convex = q => { let s = 0; for (let i = 0; i < 4; i++) { const a = q[i], b = q[(i + 1) % 4], c = q[(i + 2) % 4];
-    const z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]); if (!s) s = Math.sign(z); else if (Math.sign(z) !== s) return false; } return true; };
-  function quad(sx, sy, w, h, q) {
-    if (!convex(q)) q = [q[0], q[1], [q[1][0] + q[3][0] - q[0][0], q[1][1] + q[3][1] - q[0][1]], q[3]];   // parallelogram: affine, never singular
-    const [p0, p1, p2, p3] = q;
-    const dx1 = p1[0] - p2[0], dx2 = p3[0] - p2[0], dx3 = p0[0] - p1[0] + p2[0] - p3[0];
-    const dy1 = p1[1] - p2[1], dy2 = p3[1] - p2[1], dy3 = p0[1] - p1[1] + p2[1] - p3[1];
-    const det = dx1 * dy2 - dx2 * dy1 || 1e-9;
-    const g = (dx3 * dy2 - dx2 * dy3) / det, k = (dx1 * dy3 - dx3 * dy1) / det;
-    const a = p1[0] - p0[0] + g * p1[0], b = p3[0] - p0[0] + k * p3[0], c = p0[0];
-    const d = p1[1] - p0[1] + g * p1[1], e = p3[1] - p0[1] + k * p3[1], f = p0[1];
-    const tu = -sx / w, tv = -sy / h;
-    return `matrix3d(${a / w},${d / w},0,${g / w},${b / h},${e / h},0,${k / h},0,0,1,0,${a * tu + b * tv + c},${d * tu + e * tv + f},0,${g * tu + k * tv + 1})`;
+  // an irregular torn line: depth (px into the sheet) every few px along the perforation
+  function tornLine(len) {
+    const pts = []; for (let u = 0; u <= len + 4; u += 3 + Math.random() * 4) pts.push([u, .5 + Math.random() * 1.9 + (Math.random() < .1 ? 1.4 : 0)]);
+    return u => { let i = 0; while (i < pts.length - 2 && pts[i + 1][0] < u) i++; const [a, b] = [pts[i], pts[i + 1]], t = Math.min(1, Math.max(0, (u - a[0]) / (b[0] - a[0] || 1))); return a[1] + (b[1] - a[1]) * t; };
   }
 
-  function paper(el, edge, { onTear, onRest }) {
-    const r = el.getBoundingClientRect(), W = r.width, H = r.height, cs = getComputedStyle(el), bg = bgOf(el);
-    let cols = Math.max(3, Math.round(W / 26)), rows = Math.max(2, Math.round(H / 26));
-    while (cols * rows > 64) cols > rows ? cols-- : rows--;
-    const NX = cols + 1, N = NX * (rows + 1), id = (i, j) => (j * NX + i) * 3;
-    const P = new Float64Array(N * 3), Q = new Float64Array(N * 3), R = new Float64Array(N * 3);   // position, previous, rest
-    for (let j = 0; j <= rows; j++) for (let i = 0; i <= cols; i++) {
-      const k = id(i, j); P[k] = Q[k] = R[k] = r.left + W * i / cols; P[k + 1] = Q[k + 1] = R[k + 1] = r.top + H * j / rows;
-    }
-    const C = [];                                                     // [a, b, rest, stiffness]
-    const link = (a, b, s) => C.push([a, b, Math.hypot(R[a] - R[b], R[a + 1] - R[b + 1]), s]);
-    for (let j = 0; j <= rows; j++) for (let i = 0; i <= cols; i++) {
-      if (i < cols) link(id(i, j), id(i + 1, j), 1);
-      if (j < rows) link(id(i, j), id(i, j + 1), 1);
-      if (i < cols && j < rows) { link(id(i, j), id(i + 1, j + 1), .7); link(id(i + 1, j), id(i, j + 1), .7); }
-      if (i < cols - 1) link(id(i, j), id(i + 2, j), .35);          // bending: paper curls but springs back
-      if (j < rows - 1) link(id(i, j), id(i, j + 2), .35);
-    }
-    const pins = [];
-    if (edge === 'top') for (let i = 0; i <= cols; i++) { const k = id(i, 0); pins.push({ k, x: R[k], y: R[k + 1], lim: PIN_LIM, on: true }); }
-    else for (let j = 0; j <= rows; j++) { const k = id(0, j); pins.push({ k, x: R[k], y: R[k + 1], lim: PIN_LIM, on: true }); }
+  // body: { el, edge(): {axis, at}, cut } where the body loses everything beyond the perforation line
+  function tearable(stub, edgeOf, { body, onStart, onTear, onRest } = {}) {
+    let S = null, torn = false;                                          // S: the sheet in your hand or still on the card
+    const live = new Set();                                               // every sheet being drawn, falling ones included
 
-    // one small window per cell, showing its part of a copy of the stub, so every transformed point stays inside its quad
-    const L = layer(), cells = [], ov = .7;
-    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
-      const sx = W * i / cols, sy = H * j / rows, w = W / cols, h = H / rows;
-      const cell = document.createElement('div'), c = el.cloneNode(true), sh = document.createElement('i');
-      ['id', 'tabindex', 'role', 'aria-label', 'data-cursor'].forEach(a => c.removeAttribute(a));
-      c.classList.remove('drag', 'gone'); c.classList.add('paper-copy');
-      Object.assign(c.style, { position: 'absolute', inset: 'auto', left: ov - sx + 'px', top: ov - sy + 'px', margin: '0', width: W + 'px', height: H + 'px',
-        background: bg, color: cs.color, transform: 'none', transition: 'none', animation: 'none' });
-      cell.className = 'paper-cell'; cell.setAttribute('aria-hidden', 'true');
-      Object.assign(cell.style, { width: w + 2 * ov + 'px', height: h + 2 * ov + 'px' });
-      sh.className = 'shade'; cell.append(c, sh); L.appendChild(cell);
-      cells.push({ c: cell, sh, w, h, a: id(i, j), b: id(i + 1, j), d: id(i, j + 1), e: id(i + 1, j + 1), back: false });
+    function start(px, py) {
+      const e = edgeOf(), br = stub.getBoundingClientRect(), r = { left: br.left + scrollX, top: br.top + scrollY, width: br.width, height: br.height };
+      const W = r.width, H = r.height, Lp = e === 'top' ? W : H, D = e === 'top' ? H : W;
+      const gx = px - r.left, gy = py - r.top, gu = e === 'top' ? gx : gy;
+      const side = gu < Lp / 2 ? 'a' : 'b', sig = e === 'top' ? (side === 'a' ? -1 : 1) : (side === 'a' ? 1 : -1);
+      onStart && onStart();
+      const s = { e, r, W, H, Lp, D, side, sig, g: [gx, gy], tip: 0, phi: 0, curl: 0, mode: 'tear', jag: tornLine(Lp), need: TEAR_START,
+                  ptr: [px, py], hist: [], shed: 0, bodyJag: body ? tornLine(Lp) : null };
+      build(s); stub.classList.add('gone'); S = s; live.add(s);
+      edgeBody(s); pose(s); loop();
     }
 
-    let grab = -1, T = [0, 0, 0], g0 = [0, 0], released = false, broken = 0, free = false, done = false;
-    let acc = 0, last = performance.now(), calm = 0, sx0 = scrollX, sy0 = scrollY;
-
-    function snapPin(p) {
-      p.on = false; broken++;
-      pins.forEach(o => { if (o.on && Math.abs(o.k - p.k) <= (edge === 'top' ? 6 : NX * 6)) o.lim *= .86; });   // stress concentrates next to the gap
-      fibers(P[p.k], P[p.k + 1], bg, 2);
-      if (broken === pins.length) { free = true; grab = -1; onTear(); }
+    // ---------- geometry: (u along the perforation, v away from it), u measured from where the tear starts
+    const uOf = (s, u) => s.side === 'a' ? u : s.Lp - u;
+    function hinge(s) { const u = uOf(s, s.tip); return s.e === 'top' ? [u, 0] : [0, u]; }
+    function reach(s) {                                                    // pointer distance vs. what the rigid sheet can reach
+      const h = hinge(s), hp = [s.r.left + h[0], s.r.top + h[1]];
+      const a = [s.g[0] - h[0], s.g[1] - h[1]], b = [s.ptr[0] - hp[0], s.ptr[1] - hp[1]];
+      return { h, a, b, radius: Math.hypot(...a), dist: Math.hypot(...b), ang: Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]) };
     }
-    function aero(dt) {
-      // pressure drag: each cell pushes back along its normal, proportional to its normal velocity
-      for (const cl of cells) {
-        const { a, b, d, e } = cl;
-        const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
-        const vx = P[d] - P[a], vy = P[d + 1] - P[a + 1], vz = P[d + 2] - P[a + 2];
-        let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const nl = Math.hypot(nx, ny, nz) || 1;
-        nx /= nl; ny /= nl; nz /= nl;
-        for (const k of [a, b, d, e]) {
-          const vn = ((P[k] - Q[k]) * nx + (P[k + 1] - Q[k + 1]) * ny + (P[k + 2] - Q[k + 2]) * nz) / dt;
-          const s = -AIR * vn * dt * dt * .25;
-          P[k] += nx * s; P[k + 1] += ny * s; P[k + 2] += nz * s;
+    function tear(s, dt) {
+      let q = reach(s), run = Math.ceil(TEAR_SPEED * dt);                  // a crack has a speed: a hard rip still zips
+      while (q.dist > q.radius + s.need && s.tip < s.Lp && run-- > 0) {    // tension: the crack runs
+        s.tip = Math.min(s.Lp, s.tip + 1); s.need = TEAR_RUN; q = reach(s);
+        if ((s.tip - s.shed) > 7) { s.shed = s.tip; const h = hinge(s); fibers(s.r.left + h[0], s.r.top + h[1], s.bg); }
+      }
+      if (s.tip >= s.Lp) return true;
+      const open = s.tip ? Math.max(0, Math.min(PHI_MAX, s.sig * q.ang)) : 0;   // it cannot fold into the card
+      s.phi = s.sig * open;
+      const slack = Math.max(0, q.radius - q.dist), free = Math.max(20, q.radius);
+      s.curl = Math.min(2.1, Math.sqrt(24 * slack / free)) + Math.min(.12, open * .25);   // arc length kept: a shorter chord bows
+      return false;
+    }
+
+    // ---------- DOM: a chain of slices across the perforation, each with a printed front and a plain back
+    function build(s) {
+      const L = layer(), rig = document.createElement('div'), K = SLICES, w = s.Lp / K, ov = 1.1;
+      s.bg = bgOf(stub);
+      rig.className = 'rig'; Object.assign(rig.style, { left: s.r.left + 'px', top: s.r.top + 'px', width: s.W + 'px', height: s.H + 'px' });
+      const order = s.side === 'a' ? [...Array(K).keys()].reverse() : [...Array(K).keys()];   // from the attached end outward
+      let parent = rig; s.slices = [];
+      order.forEach((k, n) => {
+        const x = s.e === 'top' ? k * w : 0, y = s.e === 'top' ? 0 : k * w, sw = s.e === 'top' ? w : s.W, sh = s.e === 'top' ? s.H : w;
+        const sl = document.createElement('div'); sl.className = 'slice';
+        const step = s.side === 'a' ? -1 : 1;                              // where the next slice sits
+        if (!n) Object.assign(sl.style, { left: x + 'px', top: y + 'px' });
+        else Object.assign(sl.style, s.e === 'top' ? { left: step * w + 'px', top: '0' } : { left: '0', top: step * w + 'px' });
+        Object.assign(sl.style, { width: sw + 'px', height: sh + 'px',
+          transformOrigin: s.e === 'top' ? (step < 0 ? '100% 0' : '0 0') : (step < 0 ? '0 100%' : '0 0') });
+        const front = document.createElement('div'), back = document.createElement('div'), c = stub.cloneNode(true);
+        ['id', 'tabindex', 'role', 'aria-label', 'data-cursor'].forEach(a => c.removeAttribute(a));
+        c.classList.remove('gone'); c.classList.add('paper-copy');
+        Object.assign(c.style, { position: 'absolute', inset: 'auto', left: -x + 'px', top: -y + 'px', margin: '0', width: s.W + 'px', height: s.H + 'px',
+          background: s.bg, color: getComputedStyle(stub).color, transform: 'none', transition: 'none', animation: 'none' });
+        front.className = 'face'; back.className = 'face back';
+        Object.assign(front.style, { left: -ov + 'px', top: -ov + 'px', width: sw + 2 * ov + 'px', height: sh + 2 * ov + 'px' });
+        Object.assign(back.style, { left: -ov + 'px', top: -ov + 'px', width: sw + 2 * ov + 'px', height: sh + 2 * ov + 'px', background: PAPER_BACK });
+        c.style.left = -x + ov + 'px'; c.style.top = -y + ov + 'px';
+        const shF = document.createElement('i'), shB = document.createElement('i'); shF.className = shB.className = 'shade';
+        front.append(c, shF); back.append(shB); sl.append(front, back); parent.appendChild(sl); parent = sl;
+        s.slices.push({ sl, front, back, shF, shB, k, u0: k * w, u1: (k + 1) * w, sw, sh, cut: false });
+      });
+      rig.addEventListener('pointerdown', ev => { if (S === s && s.mode === 'rest') { ev.preventDefault(); regrab(s, ev); } });
+      L.appendChild(rig); s.rig = rig;
+    }
+
+    // the torn edge appears on both sheets as the crack runs
+    function edgeStub(s) {
+      const tornU = u => s.side === 'a' ? u <= s.tip : u >= s.Lp - s.tip;
+      for (const p of s.slices) {
+        if (p.cut || !(tornU(p.u0 + .1) && tornU(p.u1 - .1))) continue;
+        p.cut = true; const pts = [];
+        for (let u = p.u0; u <= p.u1 + .01; u += 2) pts.push([u - p.u0, s.jag(u)]);
+        const poly = (flip) => s.e === 'top'
+          ? `polygon(${pts.map(([x, j]) => `${(flip ? p.sw - x : x) + .6}px ${j + .6}px`).join(',')},${flip ? 0 : p.sw + 1.2}px 100%,${flip ? p.sw + 1.2 : 0}px 100%)`
+          : `polygon(${pts.map(([y, j]) => `${(flip ? p.sw - j : j) + .6}px ${y + .6}px`).join(',')},${flip ? 0 : '100%'} 100%,${flip ? 0 : '100%'} 0)`;
+        p.front.style.clipPath = poly(false); p.back.style.clipPath = poly(true);
+      }
+    }
+    function edgeBody(s) {
+      if (!body) return;
+      const el = body.el, bw = el.offsetWidth, bh = el.offsetHeight, ln = body.line();     // ln: {axis:'x'|'y', at, from}
+      const torn = u => s.side === 'a' ? u <= s.tip : u >= s.Lp - s.tip, step = 2, pts = [], rim = [];
+      for (let u = 0; u <= s.Lp; u += step) {
+        const j = torn(u) ? s.bodyJag(u) : 0;
+        pts.push([u, j]); if (j) rim.push([u, j, j + .55 + (Math.sin(u * 2.3) + 1) * .35]);
+      }
+      if (ln.axis === 'y') {   // perforation is a horizontal line at y = at; the body lies above it
+        const P = pts.map(([u, j]) => `${ln.from + u}px ${ln.at - j}px`).reverse().join(',');
+        el.style.clipPath = `polygon(0 0,${bw}px 0,${bw}px ${ln.at}px,${P},0 ${ln.at}px)`;
+      } else {                 // perforation is a vertical line at x = at; the body lies left of it
+        const P = pts.map(([u, j]) => `${ln.at - j}px ${ln.from + u}px`).join(',');
+        el.style.clipPath = `polygon(0 0,${ln.at}px 0,${P},${ln.at}px ${bh}px,0 ${bh}px)`;
+      }
+      if (!body.rim) { body.rim = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); body.rim.setAttribute('class', 'rim'); el.appendChild(body.rim); }
+      const runs = []; let cur = [];
+      rim.forEach((p, i) => { if (i && p[0] - rim[i - 1][0] > step + .1) { runs.push(cur); cur = []; } cur.push(p); }); if (cur.length) runs.push(cur);
+      body.rim.innerHTML = runs.filter(r => r.length > 1).map(r => {
+        const out = r.map(([u, j]) => ln.axis === 'y' ? `${ln.from + u},${ln.at - j}` : `${ln.at - j},${ln.from + u}`);
+        const inn = r.slice().reverse().map(([u, j, k]) => ln.axis === 'y' ? `${ln.from + u},${ln.at - k}` : `${ln.at - k},${ln.from + u}`);
+        return `<polygon points="${out.concat(inn).join(' ')}" fill="${RIM}" fill-opacity=".8"/>`;
+      }).join('');
+    }
+
+    // ---------- pose of the sheet for each mode
+    function pose(s) {
+      const K = SLICES, w = s.Lp / K, bend = s.e === 'top' ? (s.side === 'a' ? 1 : -1) : (s.side === 'a' ? -1 : 1);
+      const attached = s.mode === 'tear' || s.mode === 'rest' || s.mode === 'snap';
+      const flap = attached ? Math.min(K - 1, Math.floor(s.tip / w)) : K;          // slices fully torn, counted from the free end
+      const pivot = K - flap, curlEach = s.curl / Math.max(1, flap) * 180 / Math.PI, deg = s.phi * 180 / Math.PI;
+      let acc = 0;
+      s.slices.forEach((p, n) => {
+        const inFlap = n >= pivot, c = n && inFlap ? curlEach : 0;
+        acc += c;
+        const spin = attached && n === pivot && flap ? `rotate(${deg}deg) ` : '';
+        p.sl.style.transform = spin + (c ? (s.e === 'top' ? `rotateY(${bend * c}deg)` : `rotateX(${bend * c}deg)`) : '');
+        const tilt = (s.mode === 'fall' ? Math.abs(Math.sin(s.th)) * .6 : 0) + Math.sin(Math.min(acc, 90) * Math.PI / 180) * .7;
+        p.shF.style.opacity = p.shB.style.opacity = Math.min(.42, tilt * .42).toFixed(3);
+      });
+      const st = s.rig.style; s.rig.classList.toggle('grabbable', s.mode === 'rest');
+      if (attached) { st.transform = ''; }
+      else if (s.mode === 'hang') {
+        st.transformOrigin = `${s.g[0]}px ${s.g[1]}px`;
+        st.transform = `translate(${s.ptr[0] - s.r.left - s.g[0]}px,${s.ptr[1] - s.r.top - s.g[1]}px) rotate(${deg}deg)`;
+      } else {
+        st.transformOrigin = '50% 50%';
+        st.transform = `translate3d(${s.cx - s.r.left - s.W / 2}px,${s.cy - s.r.top - s.H / 2}px,${s.cz}px) rotateY(${s.psi}deg) rotateX(${s.th * 180 / Math.PI}deg) rotate(${deg}deg)`;
+      }
+    }
+
+    // ---------- held after the last perforation: a rigid pendulum under the finger
+    function toHang(s) {
+      s.mode = 'hang'; torn = true; stub.setAttribute('aria-hidden', 'true'); stub.tabIndex = -1; edgeBody(s); onTear && onTear();
+      const c = [s.W / 2 - s.g[0], s.H / 2 - s.g[1]], [cx, cy] = rot(c[0], c[1], s.phi);
+      s.len = Math.hypot(...c); s.c0 = Math.atan2(c[1], c[0]);
+      s.C = [s.ptr[0] + cx, s.ptr[1] + cy]; s.Cp = s.C.slice();
+    }
+    function hangStep(s, dt) {
+      const vx = (s.C[0] - s.Cp[0]) * .992, vy = (s.C[1] - s.Cp[1]) * .992;
+      s.Cp = s.C.slice(); s.C = [s.C[0] + vx, s.C[1] + vy + 1600 * dt * dt];
+      const d = [s.C[0] - s.ptr[0], s.C[1] - s.ptr[1]], l = Math.hypot(...d) || 1;
+      s.C = [s.ptr[0] + d[0] / l * s.len, s.ptr[1] + d[1] / l * s.len];
+      s.phi = Math.atan2(d[1], d[0]) - s.c0; s.curl += (.14 - s.curl) * .05;
+    }
+
+    // ---------- let go: a plate falling in air, in the vertical plane through its swing (yaw psi)
+    function toFall(s, v) {
+      const [ox, oy] = rot(s.W / 2 - s.g[0], s.H / 2 - s.g[1], s.phi);
+      const base = s.mode === 'hang' ? s.ptr : [s.r.left + hinge(s)[0], s.r.top + hinge(s)[1]];
+      const from = s.mode === 'hang' ? [ox, oy] : rot(s.W / 2 - hinge(s)[0], s.H / 2 - hinge(s)[1], s.phi);
+      s.mode = 'fall'; if (S === s) S = null;                             // it flies on its own; the stub can be put back meanwhile
+      s.cx = base[0] + from[0]; s.cy = base[1] + from[1]; s.cz = 0;
+      const narrow = Math.max(s.W, s.H) / Math.min(s.W, s.H) > 2.5;
+      s.air = narrow ? TUMBLE : FLUTTER; s.psi = (Math.random() * 50 - 25) + (v[0] > 0 ? 18 : -18);
+      s.th = .35 * (Math.random() < .5 ? -1 : 1); s.w = (narrow ? 7 : 2) * Math.sign(s.th);
+      s.h = 0; s.vh = v[0] * .4; s.vy = -v[1] * .6; s.vx = v[0] * .5;
+    }
+    function fallStep(s, dt) {
+      const { g, Cn, Ct, Cr, Cw } = s.air, th = s.th;
+      const tx = Math.sin(th), ty = Math.cos(th), nx = Math.cos(th), ny = -Math.sin(th);
+      const vt = s.vh * tx + s.vy * ty, vn = s.vh * nx + s.vy * ny;
+      s.vh += (-Cn * Math.abs(vn) * vn * nx - Ct * Math.abs(vt) * vt * tx) * dt;
+      s.vy += (-Cn * Math.abs(vn) * vn * ny - Ct * Math.abs(vt) * vt * ty - g) * dt;
+      s.w += (-Cr * vn * vt - Cw * s.w) * dt; s.th += s.w * dt;
+      s.vx *= 1 - 1.4 * dt;
+      const p = s.psi * Math.PI / 180, dh = s.vh * dt;
+      s.cx += dh * Math.sin(p) + s.vx * dt; s.cz += dh * Math.cos(p); s.cy -= s.vy * dt;
+      s.psi += (s.vx > 0 ? 8 : -8) * dt; s.curl += (.1 - s.curl) * .02;
+    }
+
+    // ---------- released without finishing: paper springs back almost flat; untouched, it lies back down
+    function settle(s, mode) {
+      s.mode = mode; const p0 = s.phi, c0 = s.curl, t0 = performance.now();
+      const p1 = mode === 'snap' ? 0 : s.sig * Math.min(s.sig * p0, .06);
+      s.ease = now => { const t = Math.min(1, (now - t0) / 420), k = 1 - Math.pow(1 - t, 3) * Math.cos(t * 6);
+        s.phi = p0 + (p1 - p0) * k; s.curl = c0 * (1 - k); return t >= 1; };
+    }
+    function finish(s) {
+      s.rig.remove(); live.delete(s); if (S === s) S = null;
+      if (s.mode === 'snap') {
+        stub.classList.remove('gone');
+        if (body) { body.el.style.clipPath = ''; body.rim && body.rim.remove(); body.rim = null; }
+        onRest && onRest();
+      }
+    }
+
+    let raf = 0, last = 0;
+    function loop() {
+      if (raf) return; last = performance.now();
+      raf = requestAnimationFrame(function frame(now) {
+        const dt = Math.min(.05, (now - last) / 1000); last = now;
+        for (const s of [...live]) {
+          if (s.mode === 'tear' && s.held && tear(s, dt)) toHang(s);
+          if (s.mode === 'hang') for (let i = 0; i < 4; i++) hangStep(s, dt / 4);
+          if (s.mode === 'fall') for (let i = 0; i < 6; i++) fallStep(s, dt / 6);
+          if (s.ease && s.ease(now)) { s.ease = null; if (s.mode === 'snap') { finish(s); continue; } }
+          edgeStub(s); if (s.mode === 'tear') edgeBody(s); pose(s);
+          if (s.mode === 'fall' && s.cy - Math.max(s.W, s.H) > scrollY + innerHeight + 120) finish(s);
         }
-      }
+        raf = [...live].some(s => s.mode !== 'rest' || s.ease) ? requestAnimationFrame(frame) : 0;
+      });
     }
-    function sub(dt) {
-      const g = broken ? G * dt * dt : 0;
-      for (let k = 0; k < N * 3; k += 3) {
-        let vx = P[k] - Q[k], vy = P[k + 1] - Q[k + 1], vz = P[k + 2] - Q[k + 2];
-        const sp = Math.hypot(vx, vy, vz); if (sp > VMAX) { vx *= VMAX / sp; vy *= VMAX / sp; vz *= VMAX / sp; }   // caps the speed per step
-        Q[k] = P[k]; Q[k + 1] = P[k + 1]; Q[k + 2] = P[k + 2];
-        P[k] += vx * .997; P[k + 1] += vy * .997 + g; P[k + 2] += vz * .997;
-      }
-      if (broken) aero(dt);
-      for (let it = 0; it < ITER; it++) {
-        for (const [a, b, rest, s] of C) {
-          const dx = P[b] - P[a], dy = P[b + 1] - P[a + 1], dz = P[b + 2] - P[a + 2], dl = Math.hypot(dx, dy, dz) || 1e-6;
-          const m = (dl - rest) / dl * .5 * s;
-          P[a] += dx * m; P[a + 1] += dy * m; P[a + 2] += dz * m; P[b] -= dx * m; P[b + 1] -= dy * m; P[b + 2] -= dz * m;
-        }
-        if (grab >= 0) { P[grab] += (T[0] - P[grab]) * .5; P[grab + 1] += (T[1] - P[grab + 1]) * .5; P[grab + 2] += (T[2] - P[grab + 2]) * .5; }
-        for (const p of pins) if (p.on) {
-          const dx = P[p.k] - p.x, dy = P[p.k + 1] - p.y, dz = P[p.k + 2];
-          if (Math.hypot(dx, dy, dz) > p.lim) snapPin(p); else { P[p.k] = p.x; P[p.k + 1] = p.y; P[p.k + 2] = 0; }
-        }
-        if (!broken && grab < 0) for (let k = 0; k < N * 3; k++) P[k] += (R[k] - P[k]) * .08;   // untorn: lies back flat
-      }
-      if (released && broken && !free) pins.forEach(p => p.on && (p.lim *= .97));        // its own weight finishes the tear
-    }
-    function render() {
-      const cx = innerWidth / 2, cy = innerHeight / 2;
-      const pr = k => { const s = CAM / (CAM - Math.min(P[k + 2], CAM * .8)); return [cx + (P[k] - cx) * s, cy + (P[k + 1] - cy) * s]; };
-      for (const cl of cells) {
-        const { a, b, d, e } = cl;
-        cl.c.style.transform = quad(ov, ov, cl.w, cl.h, [pr(a), pr(b), pr(e), pr(d)]);
-        // normal from the two diagonals: steadier than one corner, so neighbouring cells shade alike
-        const ux = P[e] - P[a], uy = P[e + 1] - P[a + 1], uz = P[e + 2] - P[a + 2];
-        const vx = P[d] - P[b], vy = P[d + 1] - P[b + 1], vz = P[d + 2] - P[b + 2];
-        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1;
-        const back = nz < 0, f = back ? -1 : 1;
-        const lam = Math.max(0, f * (-.3 * nx - .42 * ny + .86 * nz) / nl);              // light from the top left, in front
-        cl.sh.style.opacity = ((1 - lam) * .38 + (back ? .06 : 0)).toFixed(3);
-        if (back !== cl.back) { cl.back = back; cl.c.classList.toggle('back', back); }
-      }
-    }
-    function frame(now) {
-      if (done) return;
-      const ddx = scrollX - sx0, ddy = scrollY - sy0;
-      if (ddx || ddy) {                                                                 // the page moved under the sheet
-        for (const A of [P, Q, R]) for (let k = 0; k < N * 3; k += 3) { A[k] -= ddx; A[k + 1] -= ddy; }
-        pins.forEach(p => { p.x -= ddx; p.y -= ddy; }); T[0] -= ddx; T[1] -= ddy; sx0 = scrollX; sy0 = scrollY;
-      }
-      acc = Math.min(acc + (now - last) / 1000, .1); last = now;
-      while (acc >= STEP) { sub(STEP); acc -= STEP; }
-      render();
-      if (free) {
-        let low = true; for (let k = 1; k < N * 3; k += 3) if (P[k] < innerHeight + 160) { low = false; break; }
-        if (low) return end();
-      } else if (!broken && grab < 0) {
-        let dev = 0; for (let k = 0; k < N * 3; k++) dev = Math.max(dev, Math.abs(P[k] - R[k]));
-        if (dev < .25 && ++calm > 6) { end(); return onRest(); }
-      }
-      requestAnimationFrame(frame);
-    }
-    function end() { done = true; cells.forEach(cl => cl.c.remove()); }
-    function nearest(x, y) {
-      let best = 0, bd = Infinity;
-      for (let k = 0; k < N * 3; k += 3) { const dd = (P[k] - x) ** 2 + (P[k + 1] - y) ** 2; if (dd < bd) { bd = dd; best = k; } }
-      return best;
-    }
-    render(); requestAnimationFrame(frame);
-    return {
-      // the grabbed particle keeps its offset from the finger, so taking hold does not jolt the sheet
-      grab(x, y) { if (free) return; grab = nearest(x, y); T = [P[grab], P[grab + 1], 0]; g0 = [x, y, P[grab] - x, P[grab + 1] - y]; released = false; },
-      move(x, y) { if (grab < 0) return; T = [x + g0[2], y + g0[3], Math.min(90, Math.hypot(x - g0[0], y - g0[1]) * .32)]; },
-      release() { grab = -1; released = true; },
-      // a tap: pull the grabbed corner away from the perforation with a flick, then let go
-      flick() {
-        if (grab < 0) return;
-        const n = edge === 'top' ? [0, 1] : [1, 0], t0 = performance.now(), sx = P[grab], sy = P[grab + 1];
-        const side = edge === 'top' ? (P[grab] < r.left + W / 2 ? 1 : -1) : (P[grab + 1] < r.top + H / 2 ? 1 : -1);
-        (function pull(now) {
-          const t = Math.min(1, (now - t0) / 520), e = t * t * (3 - 2 * t);
-          T = [sx + n[0] * 230 * e + n[1] * side * 60 * e, sy + n[1] * 230 * e + n[0] * side * 40 * e, 110 * Math.sin(e * Math.PI * .8)];
-          if (t < 1 && !free) requestAnimationFrame(pull); else { grab = -1; released = true; }
-        })(t0);
-      }
-    };
-  }
 
-  // edgeOf() tells which side of the stub is perforated, read when the tear starts (it moves with the layout)
-  function tearable(stub, edgeOf, { onTear, onStart, onRest } = {}) {
-    let sheet = null, torn = false, ptr = null;
-    function begin(x, y) {
-      if (torn) return null;
-      if (!sheet) {
-        onStart && onStart();
-        if (reduce) { torn = true; stub.classList.add('gone'); onTear && onTear(); return null; }
-        sheet = paper(stub, edgeOf(), {
-          onTear: () => { torn = true; stub.setAttribute('aria-hidden', 'true'); stub.tabIndex = -1; onTear && onTear(); },
-          onRest: () => { sheet = null; stub.classList.remove('gone'); onRest && onRest(); }
-        });
-        stub.classList.add('gone');
-      }
-      sheet.grab(x, y); return sheet;
+    // ---------- pointer
+    let ptr = null;
+    function regrab(s, ev) {
+      // back into the tear: find which point of the sheet is under the finger
+      const h = hinge(s), hp = [s.r.left + h[0], s.r.top + h[1]];
+      const [lx, ly] = rot(ev.pageX - hp[0], ev.pageY - hp[1], -s.phi);
+      s.g = [h[0] + lx, h[1] + ly]; s.mode = 'tear'; s.ease = null; s.need = TEAR_RUN;
+      hold(s, ev);
     }
-    stub.addEventListener('pointerdown', e => {
-      if (e.button > 0 || !begin(e.clientX, e.clientY)) return;
-      e.preventDefault(); ptr = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0 };
+    function hold(s, ev) {
+      s.held = true; s.ptr = [ev.pageX, ev.pageY]; s.hist = [[ev.pageX, ev.pageY, ev.timeStamp]];
+      ptr = { id: ev.pointerId, x: ev.pageX, y: ev.pageY, moved: 0 }; loop();
+    }
+    stub.addEventListener('pointerdown', ev => {
+      if (ev.button > 0 || torn || S) return;
+      ev.preventDefault();
+      if (reduce) { torn = true; stub.classList.add('gone'); onTear && onTear(); return; }
+      start(ev.pageX, ev.pageY); hold(S, ev);
     });
-    addEventListener('pointermove', e => {
-      if (!ptr || e.pointerId !== ptr.id || !sheet) return;
-      ptr.moved = Math.max(ptr.moved, Math.hypot(e.clientX - ptr.x, e.clientY - ptr.y)); sheet.move(e.clientX, e.clientY);
+    addEventListener('pointermove', ev => {
+      if (!ptr || ev.pointerId !== ptr.id || !S) return;
+      ptr.moved = Math.max(ptr.moved, Math.hypot(ev.pageX - ptr.x, ev.pageY - ptr.y));
+      S.ptr = [ev.pageX, ev.pageY]; S.hist.push([ev.pageX, ev.pageY, ev.timeStamp]); if (S.hist.length > 6) S.hist.shift();
     });
-    const up = e => { if (!ptr || e.pointerId !== ptr.id) return; const p = ptr; ptr = null; if (!sheet) return; p.moved < 5 ? sheet.flick() : sheet.release(); };
-    addEventListener('pointerup', up); addEventListener('pointercancel', up);
-    stub.addEventListener('keydown', e => {
-      if (e.key !== 'Enter' && e.key !== ' ') return; e.preventDefault();
-      const r = stub.getBoundingClientRect(), s = begin(r.left + 6, r.bottom - 6); s && s.flick();
+    function letGo(ev) {
+      if (!ptr || ev.pointerId !== ptr.id) return; const p = ptr; ptr = null; const s = S; if (!s) return; s.held = false;
+      if (s.mode === 'tear' && p.moved < 5 && s.tip === 0) return auto(s);    // a tap tears it for you
+      const a = s.hist[0], b = s.hist[s.hist.length - 1], dt = Math.max(16, b[2] - a[2]) / 1000, v = [(b[0] - a[0]) / dt, (b[1] - a[1]) / dt];
+      if (s.mode === 'hang') { toFall(s, [(s.C[0] - s.Cp[0]) * 120, (s.C[1] - s.Cp[1]) * 120]); loop(); }
+      else if (s.mode === 'tear') { settle(s, s.tip ? 'rest' : 'snap'); loop(); }
+    }
+    addEventListener('pointerup', letGo); addEventListener('pointercancel', letGo);
+
+    // tap or Enter: a hand takes the corner and pulls it off with a flick
+    function auto(s) {
+      const away = s.e === 'top' ? [0, 1] : [1, 0], along = s.e === 'top' ? [s.side === 'a' ? -1 : 1, 0] : [0, s.side === 'a' ? -1 : 1];   // away from what is still attached
+      // it takes the free corner at the end where the tear starts, as a hand would
+      const cu = s.side === 'a' ? 4 : s.Lp - 4;
+      s.g = s.e === 'top' ? [cu, s.H - 4] : [s.W - 4, cu];
+      const g0 = [s.r.left + s.g[0], s.r.top + s.g[1]], t0 = performance.now(), T = 700;
+      s.held = true; s.hist = [];
+      (function pull(now) {
+        if (S !== s) return;
+        const t = (now - t0) / T, e = Math.min(1, t) ** 2 * (3 - 2 * Math.min(1, t)) + Math.max(0, t - 1);   // keeps pulling until it rips
+        const out = (90 + s.Lp * .3) * e + 30 * Math.sin(Math.PI * Math.min(1, e)), side = s.Lp * .2 * e;
+        s.ptr = [g0[0] + away[0] * out + along[0] * side, g0[1] + away[1] * out + along[1] * side];
+        s.hist.push([s.ptr[0], s.ptr[1], now]); if (s.hist.length > 6) s.hist.shift();
+        if (s.mode === 'tear' && t < 3) return requestAnimationFrame(pull);
+        if (s.mode === 'hang' && t < Math.max(1.25, (now - t0) / T)) { if ((now - t0) / T < 1.25) return requestAnimationFrame(pull); }
+        s.held = false;
+        if (s.mode === 'hang') toFall(s, [(s.C[0] - s.Cp[0]) * 120 + 60 * along[0], (s.C[1] - s.Cp[1]) * 120 + 60]);
+        else if (s.mode === 'tear') settle(s, 'rest');
+      })(t0);
+      loop();
+    }
+    stub.addEventListener('keydown', ev => {
+      if ((ev.key !== 'Enter' && ev.key !== ' ') || torn || S) return; ev.preventDefault();
+      if (reduce) { torn = true; stub.classList.add('gone'); onTear && onTear(); return; }
+      const br = stub.getBoundingClientRect(); start(br.left + scrollX + 4, br.bottom + scrollY - 4); auto(S);
     });
+
     return {
       restore() {
-        torn = false; sheet = null; stub.classList.remove('gone'); stub.removeAttribute('aria-hidden'); stub.tabIndex = 0;
-        if (!reduce) stub.animate([{ transform: 'translateY(26px) rotate(4deg)', opacity: 0 }, { transform: 'none', opacity: 1 }],
+        torn = false; stub.classList.remove('gone'); stub.removeAttribute('aria-hidden'); stub.tabIndex = 0;
+        if (body) { body.el.style.clipPath = ''; body.rim && body.rim.remove(); body.rim = null; }
+        if (!reduce) stub.animate([{ transform: 'translateY(22px) rotate(3deg)', opacity: 0 }, { transform: 'none', opacity: 1 }],
           { duration: 560, easing: 'cubic-bezier(.3,1.6,.5,1)' });
       }
     };
@@ -1392,26 +1495,26 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
 
   $$('.tk').forEach(tk => {
     const top = $('.tk-top', tk), stub = $('.tk-s', tk), re = $('.tk-re', tk);
-    const t = tearable(stub, () => 'top', { onTear: () => { top.style.clipPath = jagBottom(jag(18, 4)); tk.classList.add('torn'); } });
-    re.addEventListener('click', () => { tk.classList.remove('torn'); top.style.clipPath = ''; t.restore(); stub.focus({ preventScroll: true }); });
+    const t = tearable(stub, () => 'top', {
+      body: { el: top, line: () => ({ axis: 'y', at: top.offsetHeight, from: 0 }) },
+      onTear: () => tk.classList.add('torn')
+    });
+    re.addEventListener('click', () => { tk.classList.remove('torn'); t.restore(); stub.focus({ preventScroll: true }); });
   });
 
   // the boarding pass stub: perforated on its left on wide screens, on its top once the pass stacks
   const pStub = $('.pass .stub'), passRe = $('#passRe');
   const pEdge = () => getComputedStyle(pStub).borderTopStyle === 'dashed' ? 'top' : 'left';
   const pt = tearable(pStub, pEdge, {
+    body: { el: pass, line: () => pEdge() === 'left' ? { axis: 'x', at: pStub.offsetLeft, from: 0 } : { axis: 'y', at: pStub.offsetTop, from: 0 } },
     onStart: () => { pass.classList.add('hold'); pass.style.transition = 'none'; pass.style.transform = ''; void pass.offsetWidth; },
     onRest: () => { pass.classList.remove('hold'); pass.style.transition = ''; },
     onTear: () => {
-      const x = pStub.offsetLeft, y = pStub.offsetTop, pts = jag(16, 5);
-      pass.style.clipPath = pEdge() === 'left'
-        ? `polygon(0 0,${pts.map(([v, j]) => `${(x - j).toFixed(1)}px ${v}%`).join(',')},0 100%)`
-        : `polygon(0 0,100% 0,${pts.reverse().map(([v, j]) => `${v}% ${(y - j).toFixed(1)}px`).join(',')})`;
-      Object.assign(passRe.style, { left: pass.offsetLeft + x + 'px', top: pass.offsetTop + y + 'px', width: pStub.offsetWidth + 'px', height: pStub.offsetHeight + 'px' });
+      Object.assign(passRe.style, { left: pass.offsetLeft + pStub.offsetLeft + 'px', top: pass.offsetTop + pStub.offsetTop + 'px', width: pStub.offsetWidth + 'px', height: pStub.offsetHeight + 'px' });
       passRe.hidden = false; pass.classList.remove('hold'); pass.style.transition = '';
     }
   });
-  passRe.addEventListener('click', () => { passRe.hidden = true; pass.style.clipPath = ''; pt.restore(); pStub.focus({ preventScroll: true }); });
+  passRe.addEventListener('click', () => { passRe.hidden = true; pt.restore(); pStub.focus({ preventScroll: true }); });
 
   tearable($('#tear'), () => 'left');
 })();
