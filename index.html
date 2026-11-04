@@ -284,7 +284,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
 .poster:hover .open-hint{opacity:1;transform:none}
 .dark{color:var(--cream)}
 .pix img{image-rendering:pixelated;object-fit:contain;background:#c8cbbf;padding:14px}
-.more{grid-column:span 2;display:flex;flex-direction:column;justify-content:space-between;padding:22px;background:var(--ink);color:var(--cream);min-height:540px}
+.more{grid-column:span 3;display:flex;flex-direction:column;justify-content:space-between;padding:22px;background:var(--ink);color:var(--cream);min-height:540px}
 .more h3{font-size:26px;margin-bottom:18px}
 .more li{list-style:none;padding:14px 0;border-top:1px solid #f5eedd33}
 .more li b{display:block;font-family:var(--wide);font-stretch:115%;font-weight:800;font-size:16px;text-transform:uppercase;color:var(--amber)}
@@ -718,6 +718,36 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
         <span class="open-hint mono-s">Dossier ↗</span>
       </article>
 
+      <!-- MP-07 -->
+      <article class="poster big dark" data-cursor="Ouvrir le dossier" data-r style="--pbg:#1C1C1E;--panel:var(--cream)">
+        <button class="p-hit" type="button" data-open="mp" aria-label="Ouvrir le dossier MP-07 · MousePods"></button>
+        <div class="bg">
+          <i style="right:150px;top:-10%;width:34px;height:130%;background:#0A84FF;--dx:0;--dy:10px"></i>
+          <i style="right:104px;top:-10%;width:34px;height:130%;background:#BF5AF2;--dx:0;--dy:-10px"></i>
+          <i style="right:58px;top:-10%;width:34px;height:130%;background:#FF375F;--dx:0;--dy:10px"></i>
+          <i style="left:-20%;bottom:-40%;width:80%;height:70%;background:#2C2C2E;--t:rotate(-24deg)"></i>
+        </div>
+        <div class="p-band"><div><div class="p-code wide" data-decode>MP-07</div><div class="p-sub">MousePods · v1.0</div></div></div>
+        <div class="gb-row">
+          <div class="p-img"><img src="assets/mousepods.webp" width="1320" height="860" alt="L'application MousePods : mouvement des AirPods 3 en direct" loading="lazy"></div>
+          <div class="p-body">
+            <div class="p-name wide">Mes AirPods sont une souris</div>
+            <p class="p-desc">Rétro-ingénierie Bluetooth : j'ai trouvé comment les AirPods 3 exposent leurs capteurs de mouvement (protocole Apple RemoteHID), ce qu'aucun projet open source n'avait réussi, puis j'en ai fait une souris par la tête sous Linux.</p>
+          </div>
+        </div>
+        <div class="p-body gb-specs">
+          <div class="p-specs">
+            <div><b>1<sup>re</sup></b><span>Documentation publique</span></div>
+            <div><b>8</b><span>Capteurs cachés décodés</span></div>
+            <div><b>210 Hz</b><span>Contre 25 Hz avant</span></div>
+            <div><b>37</b><span>Tests automatisés</span></div>
+          </div>
+        </div>
+        <div class="p-foot"><div><div class="scanlbl mono-s">Checkpoint scan</div><span class="bc" data-bc="MP-07-MOUSEPODS"></span></div><span class="status mono-s live" style="--c:#4FD15A">Publié · inédit</span></div>
+        <span class="vert mono-s" style="color:var(--cream);right:14px">MG_04.11.26 · PYTHON · BLUETOOTH · REMOTEHID · UINPUT</span>
+        <span class="open-hint mono-s" style="right:210px">Dossier ↗</span>
+      </article>
+
       <!-- MORE -->
       <div class="more" data-r>
         <div>
@@ -1130,7 +1160,16 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:95;opa
              'La première version (2023) était un LSTM sur 13 minutes d\'un seul locuteur. La version 2 est entièrement refaite : encodeur de parole pré-entraîné, réseau causal utilisable en streaming, test sur des voix jamais entendues, export ONNX. Données, entraînement et interface réalisés seul.',
              'Résultats provisoires : première passe d\'entraînement seulement.'],
       rows: [['Période', 'Mai 2023 → octobre 2026'], ['Données', '10 vidéos · 8 locuteurs · 60 min d\'entraînement'], ['Mâchoire, validation', 'Corrélation 0,68'], ['Bouche, validation', '0,53'], ['Voix jamais entendues', '0,37 à 0,40 par extrait'], ['Tests', '17 automatisés'], ['Stack', 'PyTorch · mHuBERT · MediaPipe · ONNX']],
-      links: [['Dépôt GitHub', 'https://github.com/starman-tech/AnimatAI']] }
+      links: [['Dépôt GitHub', 'https://github.com/starman-tech/AnimatAI']] },
+    mp: { code: 'MP-07', title: 'MousePods', img: 'assets/mousepods-site.webp', status: 'Publié · inédit',
+      cap: 'Le site du projet : une démo qui rejoue de vraies données des AirPods 3, et un décodeur du protocole.',
+      body: ['Les AirPods 3 savent suivre les mouvements de la tête depuis 2021, mais aucun outil open source n\'arrivait à lire ces données : LibrePods, pods-head-tracker, airpods-head-track et les autres les classaient tous « non testés » ou « non pris en charge ».',
+             'En un après-midi de rétro-ingénierie Bluetooth, avec Claude (Anthropic) comme binôme d\'ingénierie, j\'ai trouvé pourquoi. Les AirPods 3 ignorent le protocole des AirPods Pro. Ils exposent leurs capteurs comme des périphériques HID virtuels via Apple RemoteHID, sur un canal que personne n\'avait décrit. En plus, Linux les cache : avec la taille de paquet par défaut (MTU 672), les capteurs ne sont même pas annoncés.',
+             'Une fois le protocole décrit (HostConnect, puis les annonces des 8 capteurs, puis un SetReport qui fixe l\'intervalle en microsecondes), les AirPods 3 envoient leur orientation jusqu\'à environ 210 fois par seconde. J\'en ai fait une souris par la tête sous Linux, sans root ni appareil Apple, avec une application et une calibration guidée.',
+             'Tout est publié pour que la découverte soit citée : spécification à l\'octet près, catalogue des capteurs, captures anonymisées, et un journal de chaque tentative, y compris les quelque 300 qui ont échoué.'],
+      rows: [['Période', '4 novembre 2026'], ['Découverte', 'Apple RemoteHID (HID sur AACP) · canal RTBuddy 0x800 · MTU 2582'], ['Capteurs', '8 : devmotion6, accel, gyro, cma, kadabra, mando, neorelay, iedrelay'], ['Fréquence', 'Jusqu\'à ~210 Hz (contre 25 Hz pour les outils publics)'], ['Logiciel', 'Souris · pointeur · glisse · uinput (Wayland) · application locale'], ['Vérifié', 'AirPods 3 et AirPods Pro 2 sur le matériel · 37 tests automatisés'], ['Pas encore résolu', 'Rôle exact du DeviceID Apple · 4 capteurs encore inconnus · mode glisse expérimental'], ['Licence', 'Code Apache-2.0 · découvertes CC BY 4.0'], ['Stack', 'Python · BlueZ L2CAP · HID · evdev']],
+      figs: [['assets/mousepods-protocole.webp', 'La trame qui démarre les capteurs, décodée octet par octet.'], ['assets/mousepods-capteurs.webp', 'L\'explorateur de capteurs de l\'application : chaque périphérique RemoteHID et son descripteur.']],
+      links: [['Dépôt GitHub', 'https://github.com/starman-tech/mousepods'], ['Site du projet', 'https://starman-tech.github.io/mousepods/'], ['Les découvertes', 'https://github.com/starman-tech/mousepods/blob/main/docs/DISCOVERIES.md']] }
   };
   const drawer = $('#drawer'), scrim = $('#scrim'), dBody = $('#dBody');
   let lastFocus = null;
